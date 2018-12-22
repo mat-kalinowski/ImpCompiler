@@ -15,7 +15,8 @@
    return PIDENTIFIER;
 }
 [0-9]+ {
-   yylval.ival = stoi(yytext);
+   yylval.sval = (char*) malloc(strlen(yytext)+1);
+   strcpy(yylval.sval, yytext);
    return NUM;
 }
 
@@ -25,6 +26,11 @@
 "READ" {return READ;}
 "WRITE" {return WRITE;}
 
+"+" { return ADD;}
+"-" { return SUB;}
+"*" { return MUL;}
+"/" { return DIV;}
+"%" { return MOD;}
 
 ";" {return SEM;}
 ":" {return COL;}

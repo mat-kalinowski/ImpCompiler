@@ -1,5 +1,6 @@
 %{
 	#include "data.h"
+	#include "symbol_table.h"
 
 	#include <iostream>
 	#include <unordered_map>
@@ -13,30 +14,33 @@
 	extern FILE *yyin;
 
 	void yyerror(const char *s);
-	void add_symbol(string name, bool simple);
-	void set_symbol_value(string name, int value);
+	void assign_value(string name, string value);
 	void gen_const(int value, reg_label acc);
-	reg_label allocate_var(symbol &var);
+	reg_label allocate_var(symbol *var);
 	void push_command(string command);
-	symbol get_var(string name);
 
-	unordered_map <string,symbol> symbol_tabel;
+	symbol_table table;
 	vector<string> output_code;
 	vector<reg_info> registers = {{A,false},{B,false},{C, false},{D, false},{E,false},{F,false}};
+	long long int mem_pointer = 0;
 %}
 
 %union{
 	int ival;
 	char* sval;
+	symbol idval;
 }
 %token READ WRITE
 %token DECLARE IN END
 %token SEM COL ASN EQ
+%token ADD SUB MOD MUL DIV
 %token LB RB
 %token <sval> PIDENTIFIER
-%token <ival> NUM
+%token <sval> NUM
 
 %type <sval> identifier;
+%type <sval> expression;
+%type <idval> value;
 
 %%
 
@@ -49,21 +53,33 @@ program: DECLARE declarations IN commands END {
 }
 ;
 
-declarations: declarations PIDENTIFIER SEM { add_symbol((string) $2, true); } |
- 							declarations PIDENTIFIER LB NUM COL NUM RB SEM { add_symbol((string) $2, false); } |
+declarations: declarations PIDENTIFIER SEM { table.add_symbol((string) $2, true,1,ID); } |
+ 							declarations PIDENTIFIER LB NUM COL NUM RB SEM { table.add_symbol((string) $2, false,$6-$4,ID); } |
 ;
 
 commands: commands command |
  					command
 ;
 
-command: identifier ASN NUM SEM {set_symbol_value((string)$1,$3); }
+command: identifier ASN expression SEM {assign_value((string)$1,(string)$3); }
 ;
 
 command: READ identifier SEM {}
 ;
 
-command: WRITE identifier SEM {push_command("PUT " + (string)label_str[get_var($2).curr_reg]);}
+command: WRITE identifier SEM {push_command("PUT " + table.reg_str((string)$2));}
+;
+
+expression: value |
+ 						value ADD value |
+						value SUB value |
+						value MUL value |
+						value DIV value |
+						value MOD value
+;
+
+value: NUM {table.add_symbol((string) $1, true,1,CONST)} |
+			 identifier
 ;
 
 identifier: PIDENTIFIER |
@@ -73,49 +89,42 @@ identifier: PIDENTIFIER |
 
 %%
 
-void add_symbol(string name, bool simple){
-	symbol new_symbol(simple);
-	symbol_tabel.insert({name,new_symbol});
-}
-
-symbol get_var(string name){
-	unordered_map<string,symbol>::iterator it = symbol_tabel.find(name);
+void assign_value(string name, string value){
 	reg_label temp;
+	symbol* found_symbol = table.get_var(name);
 
-	if(it != symbol_tabel.end()){
-		return it->second;
+	if(found_symbol == NULL) {
+		yyerror("undeclared variable");
 	}
-
-	return NULL;
-}
-
-void set_symbol_value(string name, int value){
-	unordered_map<string,symbol>::iterator it = symbol_tabel.find(name);
-	reg_label temp;
-
-	if(it == symbol_tabel.end()){
-		return;
-	}
-	else{
-		temp = allocate_var(it->second);
-		gen_const(value,temp);
+	else {
+		temp = allocate_var(found_symbol);
+		int ivalue = stoi(value);
+		gen_const(ivalue,temp);
 	}
 }
 
-reg_label allocate_var(symbol &var){
-	var.initialized = true;
+/*
+* variable allocation in register or memory
+*/
+reg_label allocate_var(symbol *var){
+	var->allocation = 0;
+	int i = 1; // reg A - free
 
-	for(int i = 0; i < registers.size(); i++){
-		if(!registers[i].taken){
-			registers[i].taken = true;
-			var.curr_reg = registers[i].label;
-		}
+	while(registers[i].taken){
+		i++;
 	}
-	return var.curr_reg;
+
+	registers[i].taken = true;
+	var->curr_reg = registers[i].label;
+
+	return var->curr_reg;
 }
 
+/*
+*  constant value generation
+*/
 void gen_const(int value, reg_label acc){
-	int curr = 2;
+	int curr = 1;
 	string reg_str = label_str[acc];
 
 	output_code.push_back("SUB "+ reg_str + " " + reg_str);
@@ -157,6 +166,6 @@ int main (int argc, char **argv){
 }
 
 void yyerror(const char *s) {
-  cout << "parse error " << s << endl;
+  cerr << "error: " << s << endl;
   exit(-1);
 }

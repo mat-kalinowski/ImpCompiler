@@ -11,7 +11,7 @@ clean:
 
 compiler: parser lexer
 	cp *.h $(WORK_DIR)
-	g++-7 -o $(OUT_DIR)/compiler $(WORK_DIR)/lex.cpp $(WORK_DIR)/parser.tab.c
+	g++-7 -o $(OUT_DIR)/compiler $(WORK_DIR)/lex.cpp $(WORK_DIR)/parser.tab.c *.cpp
 
 lexer: lexer.l
 	flex -o $(WORK_DIR)/lex.cpp lexer.l
