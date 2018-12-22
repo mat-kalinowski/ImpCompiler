@@ -1,0 +1,23 @@
+#ifndef SYMBOL_TABLE_H
+#define SYMBOL_TABLE_H
+
+#include <string>
+#include <unordered_map>
+#include <iostream>
+#include "data.h"
+
+using namespace std;
+
+class symbol_table{
+  public:
+    void add_symbol(string name, bool simple, int size, symbol_type type);
+    symbol* get_var(string name);
+    string reg_str(string name);
+    string reg_str(symbol &var);
+
+  private:
+    unordered_map <string,symbol> table;
+
+};
+
+#endif
