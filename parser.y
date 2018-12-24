@@ -21,14 +21,13 @@
 
 	symbol_table table;
 	vector<string> output_code;
-	vector<reg_info> registers = {{A,false},{B,false},{C, false},{D, false},{E,false},{F,false}};
+	vector<reg_info> registers = {{A,false},{B,false},{C, false},{D, false},{E,false},{F,false},{G,false},{H,false}};
 	long long int mem_pointer = 0;
 %}
 
 %union{
 	int ival;
 	char* sval;
-	symbol idval;
 }
 %token READ WRITE
 %token DECLARE IN END
@@ -40,7 +39,7 @@
 
 %type <sval> identifier;
 %type <sval> expression;
-%type <idval> value;
+%type <sval> value;
 
 %%
 
@@ -53,8 +52,8 @@ program: DECLARE declarations IN commands END {
 }
 ;
 
-declarations: declarations PIDENTIFIER SEM { table.add_symbol((string) $2, true,1,ID); } |
- 							declarations PIDENTIFIER LB NUM COL NUM RB SEM { table.add_symbol((string) $2, false,$6-$4,ID); } |
+declarations: declarations PIDENTIFIER SEM { table.add_id((string) $2, true,1); } |
+ 							declarations PIDENTIFIER LB NUM COL NUM RB SEM { table.add_id((string) $2, false,$6-$4); } |
 ;
 
 commands: commands command |
@@ -78,7 +77,7 @@ expression: value |
 						value MOD value
 ;
 
-value: NUM {table.add_symbol((string) $1, true,1,CONST)} |
+value: NUM {table.add_const((string) $1);} |
 			 identifier
 ;
 
@@ -110,12 +109,18 @@ reg_label allocate_var(symbol *var){
 	var->allocation = 0;
 	int i = 1; // reg A - free
 
-	while(registers[i].taken){
+	while(registers[i].taken && i < registers.size()){
 		i++;
 	}
 
-	registers[i].taken = true;
-	var->curr_reg = registers[i].label;
+	if(i == registers.size()){
+		var->mem_adress = mem_pointer;
+		mem_pointer += var->size;
+	}
+	else{
+			registers[i].taken = true;
+			var->curr_reg = registers[i].label;
+	}
 
 	return var->curr_reg;
 }

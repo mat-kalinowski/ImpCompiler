@@ -4,13 +4,18 @@
 * adding variable to a symbol tabel
 */
 
-void symbol_table::add_symbol(string name, bool simple, int size, symbol_type type){
-	symbol new_symbol(simple,size, type);
+void symbol_table::add_id(string name, bool simple, int size){
+	symbol new_symbol(simple,size, ID);
 
 	if(get_var(name) != NULL){
 	  cerr<<"redeclaration of variable" << endl;
 		exit(-1);
 	}
+	table.insert({name,new_symbol});
+}
+
+void symbol_table::add_const(string name){
+	symbol new_symbol(true,1,CONST);
 	table.insert({name,new_symbol});
 }
 
