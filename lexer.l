@@ -2,6 +2,7 @@
 %option yylineno
 
 %{
+   #include "data.h"
    #include <string>
    #include <stdlib.h>
  	#include "parser.tab.h"

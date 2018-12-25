@@ -14,7 +14,8 @@
 	extern FILE *yyin;
 
 	void yyerror(const char *s);
-	void assign_value(string name, string value);
+	void assign_value(symbol* name, string value);
+	void assign_expr(symbol *name, expression *expr);
 	void gen_const(int value, reg_label acc);
 	reg_label allocate_var(symbol *var);
 	void push_command(string command);
@@ -28,6 +29,8 @@
 %union{
 	int ival;
 	char* sval;
+	expression *expr;
+	symbol *smb;
 }
 %token READ WRITE
 %token DECLARE IN END
@@ -37,9 +40,9 @@
 %token <sval> PIDENTIFIER
 %token <sval> NUM
 
-%type <sval> identifier;
-%type <sval> expression;
-%type <sval> value;
+%type <expr> expression;
+%type <smb> identifier;
+%type <smb> value;
 
 %%
 
@@ -52,45 +55,72 @@ program: DECLARE declarations IN commands END {
 }
 ;
 
-declarations: declarations PIDENTIFIER SEM { table.add_id((string) $2, true,1); } |
- 							declarations PIDENTIFIER LB NUM COL NUM RB SEM { table.add_id((string) $2, false,$6-$4); } |
+declarations: declarations PIDENTIFIER SEM { table.add_id((string) $2, ID,1); } |
+ 							declarations PIDENTIFIER LB NUM COL NUM RB SEM { table.add_id((string) $2, ARR,$6-$4); } |
 ;
 
 commands: commands command |
  					command
 ;
 
-command: identifier ASN expression SEM {assign_value((string)$1,(string)$3); }
+command: identifier ASN expression SEM {assign_expr($1,$3); }
 ;
 
 command: READ identifier SEM {}
 ;
 
-command: WRITE identifier SEM {push_command("PUT " + table.reg_str((string)$2));}
+command: WRITE identifier SEM {push_command("PUT " + table.reg_str($2));}
 ;
 
-expression: value |
- 						value ADD value |
-						value SUB value |
-						value MUL value |
-						value DIV value |
-						value MOD value
+expression: value {$$ = new expression($1);} |
+ 						value ADD value {$$ = new expression($1,ADD,$3);}|
+						value SUB value {$$ = new expression($1,SUB,$3);}|
+						value MUL value {$$ = new expression($1,MUL,$3);}|
+						value DIV value {$$ = new expression($1,DIV,$3);}|
+						value MOD value {$$ = new expression($1,MOD,$3);}
 ;
 
-value: NUM {table.add_const((string) $1);} |
+value: NUM {table.add_const((string) $1); $$ = table.get_var((string)$1);} |
 			 identifier
 ;
 
-identifier: PIDENTIFIER |
-						PIDENTIFIER LB PIDENTIFIER RB |
-						PIDENTIFIER LB NUM RB
+identifier: PIDENTIFIER { $$ = table.get_var((string)$1);}|
+						PIDENTIFIER LB PIDENTIFIER RB { $$ = table.get_var((string)$1);}|
+						PIDENTIFIER LB NUM RB { $$ = table.get_var((string)$1);}
 ;
 
 %%
 
-void assign_value(string name, string value){
+void assign_expr(symbol *name, expression *expr){
+	symbol *val1 = expr->val1;
+	symbol *val2 = expr->val2;
+	int op = expr->op;
+
+	if(op == -1){
+		if(val1->type == CONST){
+			assign_value(name, val1->value);
+		}
+		else if(val1->type == ID){
+			if(name->allocation == 0){				// register
+				push_command("COPY " + table.reg_str(name) + " " + table.reg_str(val1));
+			}
+			else if(name->allocation == -1){	// uninitialized
+				allocate_var(name);
+				push_command("COPY " + table.reg_str(name) +" " + table.reg_str(val1));
+			}
+			else if(name->allocation == 1){		// memory
+
+			}
+		}
+		else if(val1->type == ARR){
+			
+		}
+	}
+
+}
+
+void assign_value(symbol* found_symbol, string value){
 	reg_label temp;
-	symbol* found_symbol = table.get_var(name);
 
 	if(found_symbol == NULL) {
 		yyerror("undeclared variable");

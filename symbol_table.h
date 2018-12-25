@@ -10,11 +10,11 @@ using namespace std;
 
 class symbol_table{
   public:
-    void add_id(string name, bool simple, int size);
+    void add_id(string name, symbol_type type, int size);
     void add_const(string name);
     symbol* get_var(string name);
     string reg_str(string name);
-    string reg_str(symbol &var);
+    string reg_str(symbol *var);
 
   private:
     unordered_map <string,symbol> table;

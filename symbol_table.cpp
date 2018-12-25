@@ -4,8 +4,8 @@
 * adding variable to a symbol tabel
 */
 
-void symbol_table::add_id(string name, bool simple, int size){
-	symbol new_symbol(simple,size, ID);
+void symbol_table::add_id(string name, symbol_type type, int size){
+	symbol new_symbol(size, type);
 
 	if(get_var(name) != NULL){
 	  cerr<<"redeclaration of variable" << endl;
@@ -15,7 +15,7 @@ void symbol_table::add_id(string name, bool simple, int size){
 }
 
 void symbol_table::add_const(string name){
-	symbol new_symbol(true,1,CONST);
+	symbol new_symbol(name);
 	table.insert({name,new_symbol});
 }
 
@@ -43,6 +43,6 @@ string symbol_table::reg_str(string name){
 /*
 *returning register of a given symbol as string
 */
-string symbol_table::reg_str(symbol &var){
-	return (string)label_str[var.curr_reg];
+string symbol_table::reg_str(symbol *var){
+	return (string)label_str[var->curr_reg];
 }
