@@ -14,11 +14,6 @@ void symbol_table::add_id(string name, symbol_type type, int size){
 	table.insert({name,new_symbol});
 }
 
-void symbol_table::add_const(string name){
-	symbol new_symbol(name);
-	table.insert({name,new_symbol});
-}
-
 /*
 * symbol tabel lookup for a variable
 */

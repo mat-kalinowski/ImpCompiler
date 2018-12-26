@@ -6,7 +6,7 @@
 using namespace std;
 
 enum reg_label { A = 0, B = 1, C = 2, D = 3, E = 4, F = 5,G = 6,H = 7};
-enum symbol_type{CONST, ID,ARR};
+enum symbol_type{CONST,ID,ARR};
 static const char *label_str[]={ "A","B","C","D","E","F","G","H"};
 
 struct symbol{
@@ -22,30 +22,24 @@ struct symbol{
     allocation = -1;
     this->type = type;
   }
-  symbol(string value){
-    this->size =1;
-    allocation = -1;
-    this->type = CONST;
-    this->value = value;
-  }
 };
 
-struct expression{
-  symbol *val1;
-  int op;
-  symbol *val2;
+struct alloc {
+  bool register;
+  reg_label curr_reg;
+  long long mem_adress;
+  symbol_type type;
 
-  expression(symbol *val1, int op, symbol *val2){
-    this->val1 = val1;
-    this->op = op;
-    this->val2 = val2;
+  alloc(reg_label curr_reg){
+    this->reg_label = curr_reg;
+    register = true;
   }
-  expression(symbol *val1){
-    this->val1 = val1;
-    this->op = -1;
-    this->val2 = NULL;
+  
+  alloc(long long mem_adress){
+    this->mem_adress = mem_adress;
+    register = false;
   }
-};
+}
 
 struct reg_info{
   reg_label label;
