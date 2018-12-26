@@ -11,35 +11,42 @@ static const char *label_str[]={ "A","B","C","D","E","F","G","H"};
 
 struct symbol{
   int size;
-  int allocation;    // -1 ~ not placed , 0 ~ register, 1 ~ memory
-  string value;
-  symbol_type type;
+  int allocation;    // -1 ~ not placed , 0 ~ memory, 1 ~ register
   reg_label curr_reg;
   long long int mem_adress;
+  symbol_type type;
 
   symbol(int size, symbol_type type){
     this->size = size;
-    allocation = -1;
+    this->allocation = -1;
     this->type = type;
   }
 };
 
 struct alloc {
-  bool register;
+  string name;
+  int allocation;      // -1 ~ not placed , 0 ~ memory, 1 ~ register
   reg_label curr_reg;
-  long long mem_adress;
+  long long int mem_adress;
   symbol_type type;
 
-  alloc(reg_label curr_reg){
-    this->reg_label = curr_reg;
-    register = true;
+  alloc(string name, reg_label curr_reg, symbol_type type){
+    this->curr_reg = curr_reg;
+    this->type = type;
+    allocation = 1;
   }
-  
-  alloc(long long mem_adress){
+
+  alloc(string name, long long mem_adress, symbol_type type){
     this->mem_adress = mem_adress;
-    register = false;
+    this->type = type;
+    allocation = 0;
   }
-}
+  alloc(string name, symbol_type type){
+    this->name = name;
+    this->type = type;
+    allocation = 0;
+  }
+};
 
 struct reg_info{
   reg_label label;

@@ -1,6 +1,7 @@
 %{
 	#include "data.h"
 	#include "symbol_table.h"
+	#include "parser_dec.h"
 
 	#include <iostream>
 	#include <unordered_map>
@@ -14,40 +15,56 @@
 	extern FILE *yyin;
 
 	void yyerror(const char *s);
-	void assign_value(symbol* name, string value);
-	void assign_expr(symbol *name, expression *expr);
-	void gen_const(int value, reg_label acc);
-	reg_label allocate_var(symbol *var);
+	void genConst(int value, reg_label acc);
+	void allocateVar(alloc *var);
+	void allocIde(alloc* var);
+	void pushCommand(string command);
+	alloc* genArrConst(string ide, string index);
+	alloc* genVar(string ide);
+	alloc* genArrVar(string arr, string ide);
+	void assignSingleExpression(alloc* var, alloc* expr);
+	void assignExpression(alloc* var, alloc* expr);
+	alloc* addExpression(alloc* var1, alloc* var2);
+	alloc* subExpression(alloc* var1, alloc* var2);
+	alloc* mulExpression(alloc* var1, alloc* var2);
+	alloc* divExpression(alloc* var1, alloc* var2);
+	alloc* modExpression(alloc* var1, alloc* var2);
+	void movRegToMem(reg_label, long long mem);
+	void movMemToReg(long long mem, reg_label reg);
+	void movMemToMem(long long mem_to, long long mem_from);
+	void write(alloc *value);
+	void genConst(int value, reg_label reg);																												/* generating constant in register B */
 	void pushCommand(string command);
 
 	symbol_table table;
 	vector<string> output_code;
 	vector<reg_info> registers = {{A,false},{B,false},{C, false},{D, false},{E,false},{F,false},{G,false},{H,false}};
 	long long int mem_pointer = 0;
+	bool singleExpression = false;
 %}
 
 %union{
 	long long ival;
 	char* sval;
-	symbol *smb;
-	alloc *alloc;
+	alloc *allocated;
 }
+
 %token READ WRITE
 %token DECLARE IN END
 %token SEM COL ASN EQ
 %token ADD SUB MOD MUL DIV
 %token LB RB
 %token <sval> PIDENTIFIER
-%token <ival> NUM
+%token <sval> NUM
 
-%type <alloc> expression;
-%type <alloc> identifier;
-%type <alloc> value;
+%type <allocated> expression;
+%type <allocated> identifier;
+%type <allocated> value;
 
 %%
 
 program: DECLARE declarations IN commands END {
-	push_command("HALT");
+	pushCommand("HALT");
 
   for(int i =0; i < output_code.size(); i++){
 		cout << output_code[i] << endl;
@@ -63,7 +80,16 @@ commands: commands command |
  					command
 ;
 
-command: identifier ASN expression SEM {assignExpression($1,$3);}
+command: identifier ASN expression SEM {
+	allocIde($1);
+	if(singleExpression){
+		assignSingleExpression($1,$3);
+		singleExpression = false;
+	}
+	else{
+		assignExpression($1,$3);
+	}
+}
 ;
 
 command: READ identifier SEM {}
@@ -72,21 +98,21 @@ command: READ identifier SEM {}
 command: WRITE identifier SEM {write($2);}
 ;
 
-expression: value {$$ = $1;} |                  /*  zawartość zawsze w rejestrze B   */
- 						value ADD value {$$ = addExpresion($1,$3);}|
-						value SUB value {$$ = subExpression($1,$3);}|
-						value MUL value {$$ = mulExpression($1,$3);}|
-						value DIV value {$$ = divExpression($1,$3);}|
-						value MOD value {$$ = modExpression($1,$3);}
+expression: value {$$ = $1; singleExpression = true;}|                  /*  zawartość zawsze w rejestrze B   */
+ 						value ADD value {$$ = addExpression($1,$3); }|
+						value SUB value {$$ = subExpression($1,$3); }|
+						value MUL value {$$ = mulExpression($1,$3); }|
+						value DIV value {$$ = divExpression($1,$3); }|
+						value MOD value {$$ = modExpression($1,$3); }
 ;
 
-value: NUM { $$ = genConst($1);} |									/* stała wygenerowana w rejestrze A  */
+value: NUM { $$ = new alloc($1,CONST);} |
 			 identifier
 ;
 
-identifier: PIDENTIFIER { $$ = genVar($1);}|
-						PIDENTIFIER LB PIDENTIFIER RB { $$ = genArrVar($1,$3);}|
-						PIDENTIFIER LB NUM RB { $$ = genArrConst($1,$3);}
+identifier: PIDENTIFIER {  table.checkVar((string)$1); $$ = genVar($1);}|
+						PIDENTIFIER LB PIDENTIFIER RB {	table.checkVar((string)$1); $$ = genArrVar($1,$3);}|
+						PIDENTIFIER LB NUM RB { table.checkVar((string)$1); $$ = genArrConst($1,$3);}
 ;
 
 %%
@@ -95,19 +121,23 @@ alloc* genVar(string ide){
 	symbol* temp = table.get_var(ide);
 	alloc* ret;
 
-	if(temp->allocation){
-		alloc = new ret(temp->curr_reg);
+	ret = new alloc(ide,ID);
+	ret->allocation = temp->allocation;
+
+	if(ret->allocation == 1){
+		ret->curr_reg = temp->curr_reg;
 	}
-	else{
-		alloc = new ret(temp->mem_adress);
+	else if(ret->allocation == 0){
+		ret->mem_adress = temp->mem_adress;
 	}
 
 	return ret;
 }
 
-alloc* genArrConst(string ide, long long index){
-	symbol* temp = table.get_var(arr);
-	alloc* ret = new ret(temp->mem_adress + index);
+alloc* genArrConst(string ide, string index){
+	symbol* temp = table.get_var(ide);
+	int i_ind = stoi(index);
+	alloc* ret = new alloc(ide,temp->mem_adress + i_ind,ARR);
 
 	return ret;
 }
@@ -117,53 +147,64 @@ alloc* genArrVar(string arr, string ide){
 	/* ???? */
 }
 
-void assignExpression(alloc* var, alloc* expr){
-	if(var->register){
-		if(expr->register){
-			pushCommand("COPY " + var->curr_reg + " " + expr->curr_reg);
+void assignSingleExpression(alloc* var, alloc* expr){														//przypisanie zmiennej do pojedynczej zmiennej
+	if(var->allocation){
+		if(expr->allocation){																							//obydwie zmienne zaalokowane w rejestrach
+			pushCommand("COPY " + (string)label_str[var->curr_reg] + " " + (string)label_str[expr->curr_reg]);
 		}
 		else{
+			if(expr->type == CONST){
+				genConst(stoi(expr->name),var->curr_reg);
+			}
+			else{
+				movMemToReg(expr->mem_adress, var->curr_reg);
+			}
 		}
 	}
 	else{
-		if(expr->register){
-
+		if(expr->allocation){																							//obydwie zmienne zaalokowane w rejestrach
+			movRegToMem(expr->curr_reg, var->mem_adress);
 		}
 		else{
-
+			if(expr->type == CONST){
+				genConst(stoi(expr->name),B);
+				movRegToMem(B, var->mem_adress);
+			}
+			else{
+				movMemToMem(var->mem_adress, expr->mem_adress );
+			}
 		}
+	}
+}
+
+void assignExpression(alloc* var, alloc* expr){																	// expression jest zawsze w rejestrze
+	if(var->allocation){
+		pushCommand("COPY " + (string)label_str[var->curr_reg] + " " + (string)label_str[expr->curr_reg]);
+	}
+	else{
+		movRegToMem(expr->curr_reg, var->mem_adress);
+	}
+}
+
+void allocIde(alloc* var){
+	if(var->allocation == -1){
+		allocateVar(var);
 	}
 }
 
 void write(alloc *value){
-	if(value->register){
-		pushCommand("PUT " + value->curr_reg);
+	if(value->allocation){
+		pushCommand("PUT " + (string)label_str[value->curr_reg]);
 	}
 	else{
-		pushCommand("HEHE");
+		movMemToReg(value->mem_adress, B);
+		pushCommand("PUT " + (string)label_str[B]);
 	}
 }
 
-
-
-void assign_value(symbol* found_symbol, string value){
-	reg_label temp;
-
-	if(found_symbol == NULL) {
-		yyerror("undeclared variable");
-	}
-	else {
-		temp = allocate_var(found_symbol);
-		int ivalue = stoi(value);
-		gen_const(ivalue,temp);
-	}
-}
-
-/*
-* variable allocation in register or memory
-*/
-reg_label allocate_reg(symbol *var){																						/* alokacja rejestru zmiennych - 3 pierwsze reg wolne */
-	int i = 3;
+void allocateVar(alloc *var){																						/* alokacja rejestru zmiennych - 3 pierwsze reg wolne */
+	int i = 2;
+	symbol* temp = table.get_var(var->name);
 
 	while(registers[i].taken && i < registers.size()){
 		i++;
@@ -172,43 +213,87 @@ reg_label allocate_reg(symbol *var){																						/* alokacja rejestru z
 	if(i == registers.size()){
 		var->allocation = 0;
 		var->mem_adress = mem_pointer;
-		mem_pointer += var->size;
+		temp->mem_adress = var->mem_adress;
+		temp->allocation = 0;
+		mem_pointer += temp->size;
 	}
+
 	else{
 			var->allocation = 1;
 			registers[i].taken = true;
 			var->curr_reg = registers[i].label;
+			temp->curr_reg = var->curr_reg;
 	}
-
-	return var->curr_reg;
+	temp->allocation = var->allocation;
 }
 
-/*
-*  constant value generation
-*/
-void genConst(int value){																												/* generating constant in register B */
+void genConst(int value, reg_label reg){																												/* generating constant in register B */
 	int curr = 1;
-	string reg_str = label_str[C];
+	string reg_str = label_str[reg];
 
 	output_code.push_back("SUB "+ reg_str + " " + reg_str);
-	output_code.push_back("INC "+ reg_str);
 
-	while(curr < value){
-		output_code.push_back("ADD "+ reg_str + " " + reg_str);
-		curr *= 2;
-	}
-	if(curr != value){
-		curr /= 2;
-		while(curr != value){
-			output_code.push_back("INC "+ reg_str);
-			curr++;
+	if(value != 0){
+		output_code.push_back("INC "+ reg_str);
+
+		while(curr*2 < value){
+			output_code.push_back("ADD "+ reg_str + " " + reg_str);
+			curr *= 2;
+		}
+		if(curr != value){
+			while(curr != value){
+				output_code.push_back("INC "+ reg_str);
+				curr++;
+			}
 		}
 	}
+}
+
+void movRegToMem(reg_label reg,long long mem){
+	genConst(mem,A);
+	pushCommand("STORE " + (string)label_str[reg]);
+}
+
+void movMemToReg(long long mem, reg_label reg){
+	genConst(mem,A);
+	pushCommand("LOAD " + (string)label_str[reg]);
+}
+
+void movMemToMem(long long mem_to, long long mem_from){
+	genConst(mem_from,A);
+	pushCommand("LOAD " + (string)label_str[B]);
+	genConst(mem_to,A);
+	pushCommand("STORE " + (string)label_str[B]);
 }
 
 void pushCommand(string command){
 	output_code.push_back(command);
 }
+
+alloc* addExpression(alloc* var1, alloc* var2){
+	if(var1->type == CONST && var2->type == CONST){
+		long long temp = stoi(var1->name);
+		long long temp2 = stoi(var2->name);
+		genConst(temp+temp2,B);
+	}
+	else if(var1->allocation && var2->allocation){
+		pushCommand("ADD " + (string)label_str[var1->curr_reg] + " " +(string)label_str[var2->curr_reg]);
+		pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+	}
+	else if(var1->allocation && !var2->allocation){
+		movMemToReg(var2->mem_adress,B);
+		pushCommand("ADD B " + (string)label_str[var1->curr_reg]);
+	}
+	return new alloc("",B,CONST);
+}
+
+alloc* subExpression(alloc* var1, alloc* var2){}
+
+alloc* mulExpression(alloc* var1, alloc* var2){}
+
+alloc* divExpression(alloc* var1, alloc* var2){}
+
+alloc* modExpression(alloc* var1, alloc* var2){}
 
 int main (int argc, char **argv){
 	if(argc > 0){

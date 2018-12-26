@@ -11,6 +11,10 @@ void symbol_table::add_id(string name, symbol_type type, int size){
 	  cerr<<"redeclaration of variable" << endl;
 		exit(-1);
 	}
+	if(type == ARR){
+		new_symbol.allocation = 0;
+		new_symbol.mem_adress = mem_pointer;
+	}
 	table.insert({name,new_symbol});
 }
 
@@ -40,4 +44,16 @@ string symbol_table::reg_str(string name){
 */
 string symbol_table::reg_str(symbol *var){
 	return (string)label_str[var->curr_reg];
+}
+
+/*
+*declarated variable validation
+*/
+
+void symbol_table::checkVar(string name){
+	symbol* temp = get_var(name);
+	if(!temp){
+		cerr << "undeclared variable use" << endl;
+		exit(-1);
+	}
 }
