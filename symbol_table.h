@@ -11,7 +11,8 @@ using namespace std;
 
 class symbol_table{
   public:
-    void add_id(string name, symbol_type type, int size);
+    void add_id(string name, int size);
+    void add_arr(string name,int size, int arr_beg);
     symbol* get_var(string name);
     string reg_str(string name);
     string reg_str(symbol *var);
@@ -19,7 +20,6 @@ class symbol_table{
 
   private:
     unordered_map <string,symbol> table;
-
 };
 
 #endif

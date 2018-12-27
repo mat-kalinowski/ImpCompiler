@@ -4,17 +4,28 @@
 * adding variable to a symbol tabel
 */
 
-void symbol_table::add_id(string name, symbol_type type, int size){
-	symbol new_symbol(size, type);
+void symbol_table::add_id(string name, int size){
+	symbol new_symbol(size, ID);
 
 	if(get_var(name) != NULL){
 	  cerr<<"redeclaration of variable" << endl;
 		exit(-1);
 	}
-	if(type == ARR){
-		new_symbol.allocation = 0;
-		new_symbol.mem_adress = mem_pointer;
+	table.insert({name,new_symbol});
+}
+
+void symbol_table::add_arr(string name, int size, int arr_beg){
+	symbol new_symbol(size, ARR, arr_beg);
+
+	if(get_var(name) != NULL){
+		cerr<<"redeclaration of variable" << endl;
+		exit(-1);
 	}
+	cerr << "meme pointer: " << mem_pointer << endl;
+	cerr<< "size: " << size<< endl;
+	new_symbol.allocation = 0;
+	new_symbol.mem_adress = mem_pointer;
+	mem_pointer += size;
 	table.insert({name,new_symbol});
 }
 

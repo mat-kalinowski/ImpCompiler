@@ -29,11 +29,12 @@
 	alloc* mulExpression(alloc* var1, alloc* var2);
 	alloc* divExpression(alloc* var1, alloc* var2);
 	alloc* modExpression(alloc* var1, alloc* var2);
-	void movRegToMem(reg_label, long long mem);
-	void movMemToReg(long long mem, reg_label reg);
-	void movMemToMem(long long mem_to, long long mem_from);
+	void movRegToMem(reg_label, alloc* mem);
+	void movMemToReg(alloc* mem, reg_label reg);
+	void movMemToMem(alloc* mem_to, alloc* mem_from);
+	void addValToMem(alloc* mem_var);
 	void write(alloc *value);
-	void genConst(int value, reg_label reg);																												/* generating constant in register B */
+	void genConst(long long int value, reg_label reg);
 	void pushCommand(string command);
 
 	symbol_table table;
@@ -72,8 +73,8 @@ program: DECLARE declarations IN commands END {
 }
 ;
 
-declarations: declarations PIDENTIFIER SEM { table.add_id((string) $2, ID,1);} |
- 							declarations PIDENTIFIER LB NUM COL NUM RB SEM { table.add_id((string) $2, ARR,$6-$4); mem_pointer += $6 - $4;} |
+declarations: declarations PIDENTIFIER SEM { table.add_id((string) $2,1);} |
+ 							declarations PIDENTIFIER LB NUM COL NUM RB SEM {table.add_arr((string) $2,stoi($6)-stoi($4)+1,stoi($4));} |
 ;
 
 commands: commands command |
@@ -137,14 +138,16 @@ alloc* genVar(string ide){
 alloc* genArrConst(string ide, string index){
 	symbol* temp = table.get_var(ide);
 	int i_ind = stoi(index);
-	alloc* ret = new alloc(ide,temp->mem_adress + i_ind,ARR);
+	alloc* ret = new alloc(ide,temp->mem_adress + i_ind-temp->arr_beg,ARR);
 
 	return ret;
 }
 
 alloc* genArrVar(string arr, string ide){
 	symbol* temp = table.get_var(arr);
-	/* ???? */
+	alloc* ret = new alloc(arr,temp->mem_adress,ARR,ide);
+
+	return ret;
 }
 
 void assignSingleExpression(alloc* var, alloc* expr){														//przypisanie zmiennej do pojedynczej zmiennej
@@ -157,32 +160,33 @@ void assignSingleExpression(alloc* var, alloc* expr){														//przypisanie
 				genConst(stoi(expr->name),var->curr_reg);
 			}
 			else{
-				movMemToReg(expr->mem_adress, var->curr_reg);
+				movMemToReg(expr, var->curr_reg);
 			}
 		}
 	}
 	else{
 		if(expr->allocation){																							//obydwie zmienne zaalokowane w rejestrach
-			movRegToMem(expr->curr_reg, var->mem_adress);
+			movRegToMem(expr->curr_reg, var);
 		}
 		else{
 			if(expr->type == CONST){
 				genConst(stoi(expr->name),B);
-				movRegToMem(B, var->mem_adress);
+				movRegToMem(B, var);
 			}
 			else{
-				movMemToMem(var->mem_adress, expr->mem_adress );
+				movMemToMem(var, expr );
 			}
 		}
 	}
 }
 
-void assignExpression(alloc* var, alloc* expr){																	// expression jest zawsze w rejestrze
+void assignExpression(alloc* var, alloc* expr){																	// expression jest zawsze w rejestrze B
 	if(var->allocation){
 		pushCommand("COPY " + (string)label_str[var->curr_reg] + " " + (string)label_str[expr->curr_reg]);
 	}
 	else{
-		movRegToMem(expr->curr_reg, var->mem_adress);
+		cerr << "var adress:" <<var->mem_adress << endl;
+		movRegToMem(expr->curr_reg, var);
 	}
 }
 
@@ -197,13 +201,13 @@ void write(alloc *value){
 		pushCommand("PUT " + (string)label_str[value->curr_reg]);
 	}
 	else{
-		movMemToReg(value->mem_adress, B);
+		movMemToReg(value, B);
 		pushCommand("PUT " + (string)label_str[B]);
 	}
 }
 
 void allocateVar(alloc *var){																						/* alokacja rejestru zmiennych - 3 pierwsze reg wolne */
-	int i = 2;
+	int i = 3;
 	symbol* temp = table.get_var(var->name);
 
 	while(registers[i].taken && i < registers.size()){
@@ -227,7 +231,7 @@ void allocateVar(alloc *var){																						/* alokacja rejestru zmiennyc
 	temp->allocation = var->allocation;
 }
 
-void genConst(int value, reg_label reg){																												/* generating constant in register B */
+void genConst(long long int value, reg_label reg){																												/* generating constant in given register */
 	int curr = 1;
 	string reg_str = label_str[reg];
 
@@ -249,25 +253,57 @@ void genConst(int value, reg_label reg){																												/* generatin
 	}
 }
 
-void movRegToMem(reg_label reg,long long mem){
+void movRegToMem(reg_label reg,alloc* mem_var){
+	long long int mem = mem_var->mem_adress;
+
 	genConst(mem,A);
+	addValToMem(mem_var);
 	pushCommand("STORE " + (string)label_str[reg]);
 }
 
-void movMemToReg(long long mem, reg_label reg){
+void movMemToReg(alloc* mem_var, reg_label reg){
+	long long int mem = mem_var->mem_adress;
+
 	genConst(mem,A);
+	addValToMem(mem_var);
 	pushCommand("LOAD " + (string)label_str[reg]);
 }
 
-void movMemToMem(long long mem_to, long long mem_from){
-	genConst(mem_from,A);
+void movMemToMem(alloc* mem_to, alloc* mem_from){
+	long long int mem1 = mem_to->mem_adress;
+	long long int mem2 = mem_from->mem_adress;
+
+	genConst(mem1,A);
+	addValToMem(mem_from);
 	pushCommand("LOAD " + (string)label_str[B]);
-	genConst(mem_to,A);
+	genConst(mem2,A);
+	addValToMem(mem_to);
 	pushCommand("STORE " + (string)label_str[B]);
 }
 
 void pushCommand(string command){
 	output_code.push_back(command);
+}
+
+void addValToMem(alloc* mem_var){										// wygenerowanie wartości indeksu w reg C
+	if(mem_var->type == ARR){
+		if(mem_var->var_ind){
+			symbol* val = table.get_var(mem_var->ind_name);					// can be NULL - possible segfault
+			symbol* mem_val = table.get_var(mem_var->name);
+
+			if(val->allocation){
+				pushCommand("ADD A "+(string)label_str[val->curr_reg]);
+			}
+			else{
+				pushCommand("COPY C A");
+				genConst(val->mem_adress,A);
+				pushCommand("LOAD A");
+				pushCommand("ADD A C");
+			}
+			genConst(mem_val->arr_beg,C);
+			pushCommand("SUB A C");
+		}
+	}
 }
 
 alloc* addExpression(alloc* var1, alloc* var2){
@@ -277,12 +313,16 @@ alloc* addExpression(alloc* var1, alloc* var2){
 		genConst(temp+temp2,B);
 	}
 	else if(var1->allocation && var2->allocation){
-		pushCommand("ADD " + (string)label_str[var1->curr_reg] + " " +(string)label_str[var2->curr_reg]);
 		pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+		pushCommand("ADD B " +(string)label_str[var2->curr_reg]);
 	}
 	else if(var1->allocation && !var2->allocation){
-		movMemToReg(var2->mem_adress,B);
+		movMemToReg(var2,B);
 		pushCommand("ADD B " + (string)label_str[var1->curr_reg]);
+	}
+	else if(!var1->allocation && var2->allocation){
+		movMemToReg(var1,B);
+		pushCommand("ADD B " + (string)label_str[var2->curr_reg]);
 	}
 	return new alloc("",B,CONST);
 }
