@@ -4,7 +4,6 @@
 	#include "parser_dec.h"
 
 	#include <iostream>
-	#include <unordered_map>
 	#include <string>
 	#include <vector>
 
@@ -34,7 +33,7 @@
 	void movMemToMem(alloc* mem_to, alloc* mem_from);
 	void addValToMem(alloc* mem_var);
 	void write(alloc *value);
-	void genConst(long long int value, reg_label reg);
+	void genConst(int value, reg_label reg);
 	void pushCommand(string command);
 
 	symbol_table table;
@@ -174,7 +173,7 @@ void assignSingleExpression(alloc* var, alloc* expr){														//przypisanie
 				movRegToMem(B, var);
 			}
 			else{
-				movMemToMem(var, expr );
+				movMemToMem(var, expr);
 			}
 		}
 	}
@@ -185,7 +184,6 @@ void assignExpression(alloc* var, alloc* expr){																	// expression je
 		pushCommand("COPY " + (string)label_str[var->curr_reg] + " " + (string)label_str[expr->curr_reg]);
 	}
 	else{
-		cerr << "var adress:" <<var->mem_adress << endl;
 		movRegToMem(expr->curr_reg, var);
 	}
 }
@@ -231,13 +229,13 @@ void allocateVar(alloc *var){																						/* alokacja rejestru zmiennyc
 	temp->allocation = var->allocation;
 }
 
-void genConst(long long int value, reg_label reg){																												/* generating constant in given register */
+void genConst(int value, reg_label reg){																												/* generating constant in given register */
 	int curr = 1;
 	string reg_str = label_str[reg];
 
 	output_code.push_back("SUB "+ reg_str + " " + reg_str);
 
-	if(value != 0){
+	if(value > 0){
 		output_code.push_back("INC "+ reg_str);
 
 		while(curr*2 < value){
@@ -273,10 +271,10 @@ void movMemToMem(alloc* mem_to, alloc* mem_from){
 	long long int mem1 = mem_to->mem_adress;
 	long long int mem2 = mem_from->mem_adress;
 
-	genConst(mem1,A);
+	genConst(mem2,A);
 	addValToMem(mem_from);
 	pushCommand("LOAD " + (string)label_str[B]);
-	genConst(mem2,A);
+	genConst(mem1,A);
 	addValToMem(mem_to);
 	pushCommand("STORE " + (string)label_str[B]);
 }
@@ -312,28 +310,127 @@ alloc* addExpression(alloc* var1, alloc* var2){
 		long long temp2 = stoi(var2->name);
 		genConst(temp+temp2,B);
 	}
-	else if(var1->allocation && var2->allocation){
-		pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
-		pushCommand("ADD B " +(string)label_str[var2->curr_reg]);
+	else if(var2->type == CONST){
+		if(var1->allocation){
+			genConst(stoi(var2->name),B);
+			pushCommand("ADD B " + (string)label_str[var1->curr_reg]);
+		}
+		else{
+			genConst(stoi(var2->name),B);
+			movMemToReg(var1,C);
+			pushCommand("ADD B C");
+		}
 	}
-	else if(var1->allocation && !var2->allocation){
-		movMemToReg(var2,B);
-		pushCommand("ADD B " + (string)label_str[var1->curr_reg]);
+	else if(var1->type == CONST){
+		if(var2->allocation){
+			genConst(stoi(var1->name),B);
+			pushCommand("ADD B " + (string)label_str[var2->curr_reg]);
+		}
+		else{
+			genConst(stoi(var1->name),B);
+			movMemToReg(var2,C);
+			pushCommand("ADD B C");
+		}
 	}
-	else if(!var1->allocation && var2->allocation){
-		movMemToReg(var1,B);
-		pushCommand("ADD B " + (string)label_str[var2->curr_reg]);
+	else{
+		if(var1->allocation && var2->allocation){
+			pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+			pushCommand("ADD B " +(string)label_str[var2->curr_reg]);
+		}
+		else if(var1->allocation && !var2->allocation){
+			movMemToReg(var2,B);
+			pushCommand("ADD B " + (string)label_str[var1->curr_reg]);
+		}
+		else if(!var1->allocation && var2->allocation){
+			movMemToReg(var1,B);
+			pushCommand("ADD B " + (string)label_str[var2->curr_reg]);
+		}
+		else if(!var1->allocation && !var2->allocation){
+			movMemToReg(var1,B);
+			movMemToReg(var2,C);
+			pushCommand("ADD B C");
+		}
 	}
+
 	return new alloc("",B,CONST);
 }
 
-alloc* subExpression(alloc* var1, alloc* var2){}
+alloc* subExpression(alloc* var1, alloc* var2){
+	if(var1->type == CONST && var2->type == CONST){
+		long long temp = stoi(var1->name);
+		long long temp2 = stoi(var2->name);
+		genConst(temp-temp2,B);
+	}
+	else if(var2->type == CONST){
+		if(var1->allocation){
+			genConst(stoi(var2->name),C);
+			pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+			pushCommand("SUB B C");
+		}
+		else{
+			movMemToReg(var1,B);
+			genConst(stoi(var2->name),C);
+			pushCommand("SUB B C");
+		}
+	}
+	else if(var1->type == CONST){
+		if(var2->allocation){
+			genConst(stoi(var1->name),B);
+			pushCommand("SUB B " + (string)label_str[var2->curr_reg]);
+		}
+		else{
+			movMemToReg(var2,C);
+			genConst(stoi(var1->name),B);
+			pushCommand("SUB B C");
+		}
+	}
+	else{
+		if(var1->allocation && var2->allocation){
+			pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+			pushCommand("SUB B " +(string)label_str[var2->curr_reg]);
+		}
+		else if(var1->allocation && !var2->allocation){
+			movMemToReg(var2,C);
+			pushCommand("COPY B "+ (string)label_str[var1->curr_reg]);
+			pushCommand("SUB B C");
+		}
+		else if(!var1->allocation && var2->allocation){
+			movMemToReg(var1,B);
+			pushCommand("SUB B " + (string)label_str[var2->curr_reg]);
+		}
+		else if(!var1->allocation && !var2->allocation){
+			movMemToReg(var1,B);
+			movMemToReg(var2,C);
+			pushCommand("SUB B C");
+		}
+	}
 
-alloc* mulExpression(alloc* var1, alloc* var2){}
+	return new alloc("",B,CONST);
+}
 
-alloc* divExpression(alloc* var1, alloc* var2){}
+alloc* mulExpression(alloc* var1, alloc* var2){
+	if(var1->type == CONST && var2->type == CONST){
+		long long temp = stoi(var1->name);
+		long long temp2 = stoi(var2->name);
+		genConst(temp*temp2,B);
+	}
+}
 
-alloc* modExpression(alloc* var1, alloc* var2){}
+alloc* divExpression(alloc* var1, alloc* var2){
+	if(var1->type == CONST && var2->type == CONST){
+		long long temp = stoi(var1->name);
+		long long temp2 = stoi(var2->name);
+		genConst(temp/temp2,B);
+	}
+}
+
+alloc* modExpression(alloc* var1, alloc* var2){
+	if(var1->type == CONST && var2->type == CONST){
+		long long temp = stoi(var1->name);
+		long long temp2 = stoi(var2->name);
+		genConst(temp%temp2,B);
+	}
+}
 
 int main (int argc, char **argv){
 	if(argc > 0){

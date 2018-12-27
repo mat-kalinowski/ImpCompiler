@@ -11,6 +11,7 @@ void symbol_table::add_id(string name, int size){
 	  cerr<<"redeclaration of variable" << endl;
 		exit(-1);
 	}
+	
 	table.insert({name,new_symbol});
 }
 
@@ -21,8 +22,7 @@ void symbol_table::add_arr(string name, int size, int arr_beg){
 		cerr<<"redeclaration of variable" << endl;
 		exit(-1);
 	}
-	cerr << "meme pointer: " << mem_pointer << endl;
-	cerr<< "size: " << size<< endl;
+
 	new_symbol.allocation = 0;
 	new_symbol.mem_adress = mem_pointer;
 	mem_pointer += size;
