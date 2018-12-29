@@ -205,7 +205,7 @@ void write(alloc *value){
 }
 
 void allocateVar(alloc *var){																						/* alokacja rejestru zmiennych - 3 pierwsze reg wolne */
-	int i = 3;
+	int i = 5;
 	symbol* temp = table.get_var(var->name);
 
 	while(registers[i].taken && i < registers.size()){
@@ -409,19 +409,127 @@ alloc* subExpression(alloc* var1, alloc* var2){
 }
 
 alloc* mulExpression(alloc* var1, alloc* var2){
+	reg_label mul_reg;
+
 	if(var1->type == CONST && var2->type == CONST){
 		long long temp = stoi(var1->name);
 		long long temp2 = stoi(var2->name);
 		genConst(temp*temp2,B);
 	}
+	else{
+		 if(var1->type == CONST || var2->type == CONST){
+			alloc *constant = (var1->type==CONST) ? var1 : var2;
+			alloc *ref = (var1->type==CONST) ? var2 : var1;
+			genConst(stoi(constant->name),B);
+
+			if(ref->allocation){
+				pushCommand("COPY C " + (string)label_str[ref->curr_reg]);
+			}
+			else{
+				movMemToReg(ref, C);
+			}
+		}
+		else{
+			if(var1->allocation && var2->allocation){
+				pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+				pushCommand("COPY C " + (string)label_str[var2->curr_reg]);
+			}
+			else if(var1->allocation || var2->allocation){
+				alloc *mem = (var1->allocation) ? var2 : var1;
+				alloc *reg = (var1->allocation) ? var1 : var2;
+
+				movMemToReg(mem,B);
+				pushCommand("COPY C " + (string)label_str[reg->curr_reg]);
+			}
+			else if(!var1->allocation && !var2->allocation){
+				movMemToReg(var1,B);
+				movMemToReg(var2,C);
+			}
+		}
+
+		pushCommand("SUB A A");
+		long long loop_beg = output_code.size();
+		long long odd_cond = loop_beg + 3;
+		long long skip_cond = loop_beg + 4;
+
+		pushCommand("JZERO B " + to_string(loop_beg+7));
+		pushCommand("JODD B " + to_string(odd_cond));
+		pushCommand("JUMP " + to_string(skip_cond));
+		pushCommand("ADD A C");
+		pushCommand("ADD C C");
+		pushCommand("HALF B");
+		pushCommand("JUMP " + to_string(loop_beg));
+		pushCommand("COPY B A");
+	}
+	return new alloc("",B,CONST);
 }
 
-alloc* divExpression(alloc* var1, alloc* var2){
+alloc* divExpression(alloc* var1, alloc* var2){						// divide reg B by reg C --->   B - DIVIDENT , C - DIVISOR
 	if(var1->type == CONST && var2->type == CONST){
 		long long temp = stoi(var1->name);
 		long long temp2 = stoi(var2->name);
 		genConst(temp/temp2,B);
 	}
+	else{
+		if(var1->type == CONST || var2->type == CONST){
+		 alloc *constant = (var1->type==CONST) ? var1 : var2;
+		 alloc *ref = (var1->type==CONST) ? var2 : var1;
+		 genConst(stoi(constant->name),B);
+
+		 if(ref->allocation){
+			 pushCommand("COPY C " + (string)label_str[ref->curr_reg]);
+		 }
+		 else{
+			 movMemToReg(ref, C);
+		 }
+	 }
+	 else{
+		 if(var1->allocation && var2->allocation){
+			 pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+			 pushCommand("COPY C " + (string)label_str[var2->curr_reg]);
+		 }
+		 else if(var1->allocation || var2->allocation){
+			 alloc *mem = (var1->allocation) ? var2 : var1;
+			 alloc *reg = (var1->allocation) ? var1 : var2;
+
+			 movMemToReg(mem,B);
+			 pushCommand("COPY C " + (string)label_str[reg->curr_reg]);
+		 }
+		 else if(!var1->allocation && !var2->allocation){
+			 movMemToReg(var1,B);
+			 movMemToReg(var2,C);
+		 }
+
+		 // setting variables
+		 pushCommand("SUB E E"); // e - result
+		 pushCommand("SUB D D");
+		 pushCommand("INC D");  // d - mul
+
+		 // while (s_div < div)
+		 pushCommand("COPY A C");
+		 pushCommand("INC A");
+		 pushCommand("SUB A B");
+		 pushCommand("JZERO A " + to_string(output_code.size() + 2));
+		 pushCommand("JUMP " + to_string(output_code.size() + 4));
+		 pushCommand("ADD C C");
+		 pushCommand("ADD D D");
+		 pushCommand("JUMP " + to_string(output_code.size() - 7));
+
+		 // while (mul != 0)
+		 pushCommand("COPY A C");
+		 pushCommand("SUB A B");
+		 pushCommand("JZERO A " + to_string(output_code.size() + 2));
+		 pushCommand("JUMP " + to_string(output_code.size() + 3));
+		 pushCommand("SUB B C");
+		 pushCommand("ADD E D");
+		 pushCommand("HALF C");
+		 pushCommand("HALF D");
+		 pushCommand("JZERO D " + to_string(output_code.size() + 2));
+		 pushCommand("JUMP " + to_string(output_code.size() - 9));
+		}
+	}
+
+	return new alloc("",E,CONST);
 }
 
 alloc* modExpression(alloc* var1, alloc* var2){
@@ -430,6 +538,52 @@ alloc* modExpression(alloc* var1, alloc* var2){
 		long long temp2 = stoi(var2->name);
 		genConst(temp%temp2,B);
 	}
+	else{
+		if(var1->allocation && var2->allocation){
+			pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
+			pushCommand("COPY C " + (string)label_str[var2->curr_reg]);
+		}
+		else if(var1->allocation || var2->allocation){
+			alloc *mem = (var1->allocation) ? var2 : var1;
+			alloc *reg = (var1->allocation) ? var1 : var2;
+
+			movMemToReg(mem,B);
+			pushCommand("COPY C " + (string)label_str[reg->curr_reg]);
+		}
+		else if(!var1->allocation && !var2->allocation){
+			movMemToReg(var1,B);
+			movMemToReg(var2,C);
+		}
+
+		// setting variables
+		pushCommand("SUB E E"); // e - result
+		pushCommand("SUB D D");
+		pushCommand("INC D");  // d - mul
+
+		// while (s_div < div)
+		pushCommand("COPY A C");
+		pushCommand("INC A");
+		pushCommand("SUB A B");
+		pushCommand("JZERO A " + to_string(output_code.size() + 2));
+		pushCommand("JUMP " + to_string(output_code.size() + 4));
+		pushCommand("ADD C C");
+		pushCommand("ADD D D");
+		pushCommand("JUMP " + to_string(output_code.size() - 7));
+
+		// while (mul != 0)
+		pushCommand("COPY A C");
+		pushCommand("SUB A B");
+		pushCommand("JZERO A " + to_string(output_code.size() + 2));
+		pushCommand("JUMP " + to_string(output_code.size() + 3));
+		pushCommand("SUB B C");
+		pushCommand("ADD E D");
+		pushCommand("HALF C");
+		pushCommand("HALF D");
+		pushCommand("JZERO D " + to_string(output_code.size() + 2));
+		pushCommand("JUMP " + to_string(output_code.size() - 9));
+	}
+
+	return new alloc("",B,CONST);
 }
 
 int main (int argc, char **argv){
