@@ -51,9 +51,12 @@
 
 %token READ WRITE
 %token DECLARE IN END
-%token SEM COL ASN EQ
+%token SEM COL ASN
 %token ADD SUB MOD MUL DIV
+%token EQ NEQ LE GE EQL EQG
 %token LB RB
+%token WHILE DO ENDDO ENDWHILE
+%token IF THEN ELSE ENDIF
 %token <sval> PIDENTIFIER
 %token <sval> NUM
 
@@ -92,10 +95,10 @@ command: identifier ASN expression SEM {
 }
 ;
 
-command: READ identifier SEM {}
-;
-
-command: WRITE identifier SEM {write($2);}
+command: READ identifier SEM {} |
+				 IF condition THEN commands ELSE commands ENDIF |
+				 IF condition THEN commands ENDIF |
+ 				 WRITE identifier SEM {write($2);}
 ;
 
 expression: value {$$ = $1; singleExpression = true;}|                  /*  zawartość zawsze w rejestrze B   */
@@ -104,6 +107,14 @@ expression: value {$$ = $1; singleExpression = true;}|                  /*  zawa
 						value MUL value {$$ = mulExpression($1,$3); }|
 						value DIV value {$$ = divExpression($1,$3); }|
 						value MOD value {$$ = modExpression($1,$3); }
+;
+
+condition: value EQ value |
+					 value NEQ value |
+					 value LE value |
+					 value GE value |
+					 value EQL value |
+					 value EQG value
 ;
 
 value: NUM { $$ = new alloc($1,CONST);} |
@@ -585,6 +596,8 @@ alloc* modExpression(alloc* var1, alloc* var2){
 
 	return new alloc("",B,CONST);
 }
+
+
 
 int main (int argc, char **argv){
 	if(argc > 0){

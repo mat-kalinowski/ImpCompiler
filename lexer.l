@@ -26,6 +26,14 @@
 "END" {return END;}
 "READ" {return READ;}
 "WRITE" {return WRITE;}
+"IF" {return IF;}
+"THEN" {return THEN;}
+"ELSE" {return ELSE;}
+"ENDIF" {return ENDIF;}
+"WHILE" {return WHILE;}
+"DO" {return DO;}
+"ENDDO" {return ENDDO;}
+"ENDWHILE" {return ENDWHILE;}
 
 "+" { return ADD;}
 "-" { return SUB;}
@@ -38,7 +46,13 @@
 "(" {return LB;}
 ")" {return RB;}
 ":=" {return ASN;}
+
 "=" {return EQ;}
+"!=" {return NEQ;}
+"<" {return LE;}
+">" {return GE;}
+"<=" {return EQL;}
+">=" {return EQG;}
 
 [\n\t" "] {}
 %%
