@@ -32,6 +32,7 @@
 	void movMemToMem(alloc* mem_to, alloc* mem_from);
 	void movExprToReg(alloc* var1, alloc* var2);
 	void addValToMem(alloc* mem_var);
+	void movValToIterator(alloc* var1, alloc* var2);
 
 	void write(alloc* value);
 	void read(alloc* value);
@@ -46,6 +47,11 @@
 	void resolveIfJump(block* cond);
 	void resolveWhileJump(block* cond);
 	void resolveDoWhileJump(int beg,block* cond);
+
+	block* setIncLoop(string it_name, alloc* val1, alloc* val2);
+	void setIncJump(block* for_beg, string it_name);
+	block* setDecLoop(string it_name, alloc* val1, alloc* val2);
+	void setDecJump(block* for_beg, string it_name);
 
 	symbol_table table;
 
@@ -72,10 +78,11 @@
 %token EQ NEQ LE GE EQL EQG
 %token LB RB
 %token WHILE ENDDO ENDWHILE
-%token FOR FROM TO DOWNTO ENDFOR
+%token FROM TO DOWNTO ENDFOR
 %token IF THEN ELSE ENDIF
 
 %token <ival> DO
+%token <blc> FOR
 %token <sval> PIDENTIFIER
 %token <sval> NUM
 
@@ -121,8 +128,8 @@ command: READ identifier SEM {read($2);} |
 				 IF condition THEN commands ENDIF { resolveIfJump($2); }|
 				 WHILE condition DO commands ENDWHILE { resolveWhileJump($2); }|
 				 DO { $1 = codeOffset;} commands WHILE condition ENDDO { resolveDoWhileJump($1,$5); } |
-				 FOR PIDENTIFIER FROM value TO value DO { /*setLoop(INC);*/ } commands ENDFOR {/*setLoopJump()*/} |
-				 FOR PIDENTIFIER FROM value DOWNTO value DO { /*setDownLoop(DEC);*/ } commands ENDFOR {/*setLoopJump()*/} |
+				 FOR PIDENTIFIER FROM value TO value DO { $1 = setIncLoop($2,$4,$6); } commands ENDFOR { setIncJump($1,$2); } |
+				 FOR PIDENTIFIER FROM value DOWNTO value DO { $1 = setDecLoop($2,$4,$6); } commands ENDFOR { setDecJump($1,$2); } |
  				 WRITE value SEM {write($2);} |
 ;
 
@@ -367,6 +374,52 @@ void movExprToReg(alloc* var1, alloc* var2, reg_label reg1, reg_label reg2){
 	}
 	else if(var2->allocation){
 		pushCommand("COPY " + (string)label_str[reg2] + " " + (string)label_str[var2->curr_reg]);
+	}
+}
+
+void movValToIterator(alloc* var1, alloc* var2, int exVal){
+	if(var1->allocation == 1){																						// i placed in mem or reg  1.) i = val1
+		if(var2->type == CONST){
+			genConst(stoi(var2->name)+exVal,var1->curr_reg);
+		}
+		else if(var2->allocation ==1){
+			pushCommand("COPY " + (string)label_str[var1->curr_reg] + (string)label_str[var2->curr_reg]);
+			if(exVal != 0){
+				pushCommand("INC " + (string)label_str[var1->curr_reg]);
+			}
+		}
+		else if(!var2->allocation){
+			movMemToReg(var2,var1->curr_reg);
+			if(exVal != 0){
+				pushCommand("INC "+ (string)label_str[var1->curr_reg]);
+			}
+		}
+	}
+	else if(!var1->allocation){
+		if(var2->type == CONST){
+			genConst(stoi(var2->name)+exVal,B);
+			movRegToMem(B,var1);
+		}
+		else if(var2->allocation ==1){
+			if(exVal != 0){
+				pushCommand("COPY E " + (string)label_str[var2->curr_reg]);
+				pushCommand("INC E");
+				movRegToMem(E,var1);
+			}
+			else{
+				movRegToMem(var2->curr_reg,var1);
+			}
+		}
+		else if(!var2->allocation){
+			if(exVal!=0){
+				movMemToReg(var2,E);
+				pushCommand("INC E");
+				movRegToMem(E,var1);
+			}
+			else{
+				movMemToMem(var1,var2);
+			}
+		}
 	}
 }
 
@@ -642,7 +695,7 @@ block* generateLE(alloc* var1, alloc* var2){
 		long long num1 = stoi(var1->name);
 		long long num2 = stoi(var2->name);
 
-		(num1 < num2) ? pushCommand("INC E") : pushCommand("SUB E E");
+		(num1 < num2) ?  pushCommand("INC B") : pushCommand("SUB B B");
 	}
 	else{
 		movExprToReg(var1, var2,E,B);
@@ -665,7 +718,7 @@ block* generateEQL(alloc* var1, alloc* var2){
 		long long num1 = stoi(var1->name);
 		long long num2 = stoi(var2->name);
 
-		(num1 <= num2) ? pushCommand("INC E") : pushCommand("SUB E E");
+		(num1 <= num2) ?  pushCommand("SUB E E") : pushCommand("INC E");
 	}
 	else{
 		movExprToReg(var1, var2,E,B);
@@ -754,6 +807,80 @@ void resolveDoWhileJump(int beg,block* cond){
 		}
 	}
 }
+
+block* setIncLoop(string var, alloc* val1, alloc* val2){ 										// returning place to jump at the bottom
+	long long loop_ind;
+	long long out_jump;
+
+	table.add_iterator(var,1);
+	alloc* var_info = genVar(var);
+	allocateVar(var_info);
+	movValToIterator(var_info, val1,0);
+
+	loop_ind = codeOffset;
+
+	movExprToReg(var_info,val2,B,C);
+	pushCommand("SUB B C");
+	pushCommand("JZERO B " + to_string(codeOffset+2));
+	out_jump = codeOffset;
+	pushCommand("JUMP ");
+
+	return new block(loop_ind, out_jump);
+}
+
+void setIncJump(block* for_beg, string it_name){
+	alloc* var_info = genVar(it_name);
+
+	if(var_info->allocation ){
+		pushCommand("INC " + (string)label_str[var_info->curr_reg]);
+		pushCommand("COPY B " + (string)label_str[var_info->curr_reg]);
+	}
+	else if(!var_info->allocation){
+		movMemToReg(var_info,B);
+		pushCommand("INC B");
+		movRegToMem(B,var_info);
+	}
+	pushCommand("JUMP "+ to_string(for_beg->beg_block));
+	output_code[for_beg->end_block] += to_string(codeOffset);
+	table.remove(it_name);
+}
+
+block* setDecLoop(string var, alloc* val1, alloc* val2){ 										// returning place to jump at the bottom
+	long long loop_ind;
+	long long out_jump;
+
+	table.add_iterator(var,1);
+	alloc* var_info = genVar(var);
+	allocateVar(var_info);
+
+	movValToIterator(var_info, val1,1);
+
+	loop_ind = codeOffset;
+
+	movExprToReg(var_info,val2,B,C);
+	pushCommand("COPY D B");
+	pushCommand("SUB D C");
+	out_jump = codeOffset;
+	pushCommand("JZERO D ");
+
+	pushCommand("DEC B");
+
+	if(var_info->allocation){
+		pushCommand("COPY " + string(label_str[var_info->curr_reg]) + " B");
+	}
+	else if(!var_info->allocation){
+		movRegToMem(B,var_info);
+	}
+
+	return new block(loop_ind, out_jump);
+}
+
+void setDecJump(block* for_beg,string it_name){
+	pushCommand("JUMP "+ to_string(for_beg->beg_block));
+	output_code[for_beg->end_block] += to_string(codeOffset);
+	table.remove(it_name);
+}
+
 
 int main (int argc, char **argv){
 	if(argc > 0){
