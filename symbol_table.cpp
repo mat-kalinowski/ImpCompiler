@@ -11,7 +11,17 @@ void symbol_table::add_id(string name, int size){
 	  cerr<<"redeclaration of variable" << endl;
 		exit(-1);
 	}
-	
+
+	table.insert({name,new_symbol});
+}
+
+void symbol_table::add_iterator(string name, int size){
+	symbol new_symbol(size, ITER);
+
+	if(get_var(name) != NULL){
+	  yyerror("iterator name is already taken as variable");
+	}
+
 	table.insert({name,new_symbol});
 }
 
@@ -67,4 +77,8 @@ void symbol_table::checkVar(string name){
 		cerr << "undeclared variable use" << endl;
 		exit(-1);
 	}
+}
+
+void symbol_table::remove(string name){
+	table.erase(name);  
 }

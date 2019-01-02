@@ -6,7 +6,7 @@
 using namespace std;
 
 enum reg_label { A = 0, B = 1, C = 2, D = 3, E = 4, F = 5,G = 6,H = 7};
-enum symbol_type {CONST,ID,ARR};
+enum symbol_type {CONST,ID,ARR,ITER};
 enum jump_type {BEG, OUT, BLOCK};                                               // JUMP to BEGINNING of cond , JUMP to END of block, JUMP to beggining of BLOCK
 static const char *label_str[]={ "A","B","C","D","E","F","G","H"};
 
