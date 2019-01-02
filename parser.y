@@ -12,17 +12,16 @@
   extern int yylex();
 	extern int yyparse();
 	extern FILE *yyin;
-
 	void yyerror(const char *s);
+
 	void genConst(int value, reg_label acc);
 	void allocateVar(alloc *var);
-	void allocIde(alloc* var);
 	void pushCommand(string command);
+	void assignSingleExpression(alloc* var, alloc* expr);
+	void assignExpression(alloc* var, alloc* expr);
 	alloc* genArrConst(string ide, string index);
 	alloc* genVar(string ide);
 	alloc* genArrVar(string arr, string ide);
-	void assignSingleExpression(alloc* var, alloc* expr);
-	void assignExpression(alloc* var, alloc* expr);
 	alloc* addExpression(alloc* var1, alloc* var2);
 	alloc* subExpression(alloc* var1, alloc* var2);
 	alloc* mulExpression(alloc* var1, alloc* var2);
@@ -31,15 +30,31 @@
 	void movRegToMem(reg_label, alloc* mem);
 	void movMemToReg(alloc* mem, reg_label reg);
 	void movMemToMem(alloc* mem_to, alloc* mem_from);
+	void movExprToReg(alloc* var1, alloc* var2);
 	void addValToMem(alloc* mem_var);
-	void write(alloc *value);
+
+	void write(alloc* value);
+	void read(alloc* value);
 	void genConst(int value, reg_label reg);
 	void pushCommand(string command);
 
+	block* generateEQ(alloc* var1, alloc* var2);
+	block* generateNEQ(alloc* var1, alloc* var2);
+	block* generateLE(alloc* var1, alloc* var2);
+	block* generateEQL(alloc* var1, alloc* var2);
+
+	void resolveIfJump(block* cond);
+	void resolveWhileJump(block* cond);
+	void resolveDoWhileJump(int beg,block* cond);
+
 	symbol_table table;
+
+	vector<vector<jump*>> jumpStack;
 	vector<string> output_code;
 	vector<reg_info> registers = {{A,false},{B,false},{C, false},{D, false},{E,false},{F,false},{G,false},{H,false}};
+
 	long long int mem_pointer = 0;
+	long long int codeOffset = 0;
 	bool singleExpression = false;
 %}
 
@@ -47,6 +62,7 @@
 	long long ival;
 	char* sval;
 	alloc *allocated;
+	block* blc;
 }
 
 %token READ WRITE
@@ -55,11 +71,15 @@
 %token ADD SUB MOD MUL DIV
 %token EQ NEQ LE GE EQL EQG
 %token LB RB
-%token WHILE DO ENDDO ENDWHILE
+%token WHILE ENDDO ENDWHILE
+%token FOR FROM TO DOWNTO ENDFOR
 %token IF THEN ELSE ENDIF
+
+%token <ival> DO
 %token <sval> PIDENTIFIER
 %token <sval> NUM
 
+%type <blc> condition;         /* miejsce początku warunku i następnej instrukcji po warunku */
 %type <allocated> expression;
 %type <allocated> identifier;
 %type <allocated> value;
@@ -84,7 +104,7 @@ commands: commands command |
 ;
 
 command: identifier ASN expression SEM {
-	allocIde($1);
+	allocateVar($1);
 	if(singleExpression){
 		assignSingleExpression($1,$3);
 		singleExpression = false;
@@ -95,10 +115,15 @@ command: identifier ASN expression SEM {
 }
 ;
 
-command: READ identifier SEM {} |
-				 IF condition THEN commands ELSE commands ENDIF |
-				 IF condition THEN commands ENDIF |
- 				 WRITE identifier SEM {write($2);}
+command: READ identifier SEM {read($2);} |
+				 IF condition THEN commands { pushCommand("JUMP "); $<ival>1 = codeOffset-1; resolveIfJump($2); }
+				 ELSE commands ENDIF { output_code[$<ival>1] += to_string(codeOffset); }|
+				 IF condition THEN commands ENDIF { resolveIfJump($2); }|
+				 WHILE condition DO commands ENDWHILE { resolveWhileJump($2); }|
+				 DO { $1 = codeOffset;} commands WHILE condition ENDDO { resolveDoWhileJump($1,$5); } |
+				 FOR PIDENTIFIER FROM value TO value DO { /*setLoop(INC);*/ } commands ENDFOR {/*setLoopJump()*/} |
+				 FOR PIDENTIFIER FROM value DOWNTO value DO { /*setDownLoop(DEC);*/ } commands ENDFOR {/*setLoopJump()*/} |
+ 				 WRITE value SEM {write($2);} |
 ;
 
 expression: value {$$ = $1; singleExpression = true;}|                  /*  zawartość zawsze w rejestrze B   */
@@ -109,12 +134,12 @@ expression: value {$$ = $1; singleExpression = true;}|                  /*  zawa
 						value MOD value {$$ = modExpression($1,$3); }
 ;
 
-condition: value EQ value |
-					 value NEQ value |
-					 value LE value |
-					 value GE value |
-					 value EQL value |
-					 value EQG value
+condition: value EQ value  { $$ = generateEQ($1,$3); }|
+					 value NEQ value { $$ = generateNEQ($1,$3); }|
+					 value LE value  { $$ = generateLE($1,$3); }|
+					 value GE value  { $$ = generateLE($3,$1); }|
+					 value EQL value { $$ = generateEQL($1,$3); }|
+					 value EQG value { $$ = generateEQL($3,$1); }
 ;
 
 value: NUM { $$ = new alloc($1,CONST);} |
@@ -199,14 +224,12 @@ void assignExpression(alloc* var, alloc* expr){																	// expression je
 	}
 }
 
-void allocIde(alloc* var){
-	if(var->allocation == -1){
-		allocateVar(var);
-	}
-}
-
 void write(alloc *value){
-	if(value->allocation){
+	if(value->type == CONST){
+		genConst(stoi(value->name), B);
+		pushCommand("PUT " + (string)label_str[B]);
+	}
+	else if(value->allocation){
 		pushCommand("PUT " + (string)label_str[value->curr_reg]);
 	}
 	else{
@@ -215,47 +238,60 @@ void write(alloc *value){
 	}
 }
 
-void allocateVar(alloc *var){																						/* alokacja rejestru zmiennych - 3 pierwsze reg wolne */
-	int i = 5;
-	symbol* temp = table.get_var(var->name);
-
-	while(registers[i].taken && i < registers.size()){
-		i++;
+void read(alloc* value){
+	allocateVar(value);
+	if(value->allocation){
+		pushCommand("GET " + (string)label_str[value->curr_reg]);
 	}
-
-	if(i == registers.size()){
-		var->allocation = 0;
-		var->mem_adress = mem_pointer;
-		temp->mem_adress = var->mem_adress;
-		temp->allocation = 0;
-		mem_pointer += temp->size;
-	}
-
 	else{
-			var->allocation = 1;
-			registers[i].taken = true;
-			var->curr_reg = registers[i].label;
-			temp->curr_reg = var->curr_reg;
+		pushCommand("GET " + (string)label_str[B]);
+		movRegToMem(B,value);
 	}
-	temp->allocation = var->allocation;
+}
+
+void allocateVar(alloc *var){																						/* alokacja rejestru zmiennych - 3 pierwsze reg wolne */
+	if(var->allocation == -1){
+		int i = 5;
+		symbol* temp = table.get_var(var->name);
+
+		while(registers[i].taken && i < registers.size()){
+			i++;
+		}
+
+		if(i == registers.size()){
+			var->allocation = 0;
+			var->mem_adress = mem_pointer;
+			temp->mem_adress = var->mem_adress;
+			temp->allocation = 0;
+			mem_pointer += temp->size;
+		}
+
+		else{
+				var->allocation = 1;
+				registers[i].taken = true;
+				var->curr_reg = registers[i].label;
+				temp->curr_reg = var->curr_reg;
+		}
+		temp->allocation = var->allocation;
+	}
 }
 
 void genConst(int value, reg_label reg){																												/* generating constant in given register */
 	int curr = 1;
 	string reg_str = label_str[reg];
 
-	output_code.push_back("SUB "+ reg_str + " " + reg_str);
+	pushCommand("SUB "+ reg_str + " " + reg_str);
 
 	if(value > 0){
-		output_code.push_back("INC "+ reg_str);
+		pushCommand("INC "+ reg_str);
 
 		while(curr*2 < value){
-			output_code.push_back("ADD "+ reg_str + " " + reg_str);
+			pushCommand("ADD "+ reg_str + " " + reg_str);
 			curr *= 2;
 		}
 		if(curr != value){
 			while(curr != value){
-				output_code.push_back("INC "+ reg_str);
+				pushCommand("INC "+ reg_str);
 				curr++;
 			}
 		}
@@ -290,10 +326,6 @@ void movMemToMem(alloc* mem_to, alloc* mem_from){
 	pushCommand("STORE " + (string)label_str[B]);
 }
 
-void pushCommand(string command){
-	output_code.push_back(command);
-}
-
 void addValToMem(alloc* mem_var){										// wygenerowanie wartości indeksu w reg C
 	if(mem_var->type == ARR){
 		if(mem_var->var_ind){
@@ -312,6 +344,29 @@ void addValToMem(alloc* mem_var){										// wygenerowanie wartości indeksu w 
 			genConst(mem_val->arr_beg,C);
 			pushCommand("SUB A C");
 		}
+	}
+}
+
+void movExprToReg(alloc* var1, alloc* var2, reg_label reg1, reg_label reg2){
+
+	if(var1->type == CONST){
+		genConst(stoi(var1->name),reg1);
+  }
+ 	else if(!var1->allocation){
+		movMemToReg(var1, reg1);
+ 	}
+	else if(var1->allocation){
+		pushCommand("COPY " + (string)label_str[reg1] + " " + (string)label_str[var1->curr_reg]);
+	}
+
+	if(var2->type == CONST){
+		genConst(stoi(var2->name),reg2);
+	}
+	else if(!var2->allocation){
+		movMemToReg(var2,reg2);
+	}
+	else if(var2->allocation){
+		pushCommand("COPY " + (string)label_str[reg2] + " " + (string)label_str[var2->curr_reg]);
 	}
 }
 
@@ -428,35 +483,8 @@ alloc* mulExpression(alloc* var1, alloc* var2){
 		genConst(temp*temp2,B);
 	}
 	else{
-		 if(var1->type == CONST || var2->type == CONST){
-			alloc *constant = (var1->type==CONST) ? var1 : var2;
-			alloc *ref = (var1->type==CONST) ? var2 : var1;
-			genConst(stoi(constant->name),B);
 
-			if(ref->allocation){
-				pushCommand("COPY C " + (string)label_str[ref->curr_reg]);
-			}
-			else{
-				movMemToReg(ref, C);
-			}
-		}
-		else{
-			if(var1->allocation && var2->allocation){
-				pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
-				pushCommand("COPY C " + (string)label_str[var2->curr_reg]);
-			}
-			else if(var1->allocation || var2->allocation){
-				alloc *mem = (var1->allocation) ? var2 : var1;
-				alloc *reg = (var1->allocation) ? var1 : var2;
-
-				movMemToReg(mem,B);
-				pushCommand("COPY C " + (string)label_str[reg->curr_reg]);
-			}
-			else if(!var1->allocation && !var2->allocation){
-				movMemToReg(var1,B);
-				movMemToReg(var2,C);
-			}
-		}
+		movExprToReg(var1,var2,B,C);
 
 		pushCommand("SUB A A");
 		long long loop_beg = output_code.size();
@@ -479,99 +507,16 @@ alloc* divExpression(alloc* var1, alloc* var2){						// divide reg B by reg C --
 	if(var1->type == CONST && var2->type == CONST){
 		long long temp = stoi(var1->name);
 		long long temp2 = stoi(var2->name);
-		genConst(temp/temp2,B);
+		genConst(temp/temp2,E);
 	}
 	else{
-		if(var1->type == CONST || var2->type == CONST){
-		 alloc *constant = (var1->type==CONST) ? var1 : var2;
-		 alloc *ref = (var1->type==CONST) ? var2 : var1;
-		 genConst(stoi(constant->name),B);
 
-		 if(ref->allocation){
-			 pushCommand("COPY C " + (string)label_str[ref->curr_reg]);
-		 }
-		 else{
-			 movMemToReg(ref, C);
-		 }
-	 }
-	 else{
-		 if(var1->allocation && var2->allocation){
-			 pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
-			 pushCommand("COPY C " + (string)label_str[var2->curr_reg]);
-		 }
-		 else if(var1->allocation || var2->allocation){
-			 alloc *mem = (var1->allocation) ? var2 : var1;
-			 alloc *reg = (var1->allocation) ? var1 : var2;
+		movExprToReg(var1,var2,B,C);
 
-			 movMemToReg(mem,B);
-			 pushCommand("COPY C " + (string)label_str[reg->curr_reg]);
-		 }
-		 else if(!var1->allocation && !var2->allocation){
-			 movMemToReg(var1,B);
-			 movMemToReg(var2,C);
-		 }
-
-		 // setting variables
-		 pushCommand("SUB E E"); // e - result
-		 pushCommand("SUB D D");
-		 pushCommand("INC D");  // d - mul
-
-		 // while (s_div < div)
-		 pushCommand("COPY A C");
-		 pushCommand("INC A");
-		 pushCommand("SUB A B");
-		 pushCommand("JZERO A " + to_string(output_code.size() + 2));
-		 pushCommand("JUMP " + to_string(output_code.size() + 4));
-		 pushCommand("ADD C C");
-		 pushCommand("ADD D D");
-		 pushCommand("JUMP " + to_string(output_code.size() - 7));
-
-		 // while (mul != 0)
-		 pushCommand("COPY A C");
-		 pushCommand("SUB A B");
-		 pushCommand("JZERO A " + to_string(output_code.size() + 2));
-		 pushCommand("JUMP " + to_string(output_code.size() + 3));
-		 pushCommand("SUB B C");
-		 pushCommand("ADD E D");
-		 pushCommand("HALF C");
-		 pushCommand("HALF D");
-		 pushCommand("JZERO D " + to_string(output_code.size() + 2));
-		 pushCommand("JUMP " + to_string(output_code.size() - 9));
-		}
-	}
-
-	return new alloc("",E,CONST);
-}
-
-alloc* modExpression(alloc* var1, alloc* var2){
-	if(var1->type == CONST && var2->type == CONST){
-		long long temp = stoi(var1->name);
-		long long temp2 = stoi(var2->name);
-		genConst(temp%temp2,B);
-	}
-	else{
-		if(var1->allocation && var2->allocation){
-			pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
-			pushCommand("COPY C " + (string)label_str[var2->curr_reg]);
-		}
-		else if(var1->allocation || var2->allocation){
-			alloc *mem = (var1->allocation) ? var2 : var1;
-			alloc *reg = (var1->allocation) ? var1 : var2;
-
-			movMemToReg(mem,B);
-			pushCommand("COPY C " + (string)label_str[reg->curr_reg]);
-		}
-		else if(!var1->allocation && !var2->allocation){
-			movMemToReg(var1,B);
-			movMemToReg(var2,C);
-		}
-
-		// setting variables
 		pushCommand("SUB E E"); // e - result
 		pushCommand("SUB D D");
 		pushCommand("INC D");  // d - mul
 
-		// while (s_div < div)
 		pushCommand("COPY A C");
 		pushCommand("INC A");
 		pushCommand("SUB A B");
@@ -581,7 +526,6 @@ alloc* modExpression(alloc* var1, alloc* var2){
 		pushCommand("ADD D D");
 		pushCommand("JUMP " + to_string(output_code.size() - 7));
 
-		// while (mul != 0)
 		pushCommand("COPY A C");
 		pushCommand("SUB A B");
 		pushCommand("JZERO A " + to_string(output_code.size() + 2));
@@ -594,10 +538,222 @@ alloc* modExpression(alloc* var1, alloc* var2){
 		pushCommand("JUMP " + to_string(output_code.size() - 9));
 	}
 
+	return new alloc("",E,CONST);
+}
+
+alloc* modExpression(alloc* var1, alloc* var2){
+	if(var1->type == CONST && var2->type == CONST){
+		long long temp = stoi(var1->name);
+		long long temp2 = stoi(var2->name);
+		genConst(temp/temp2,B);
+	}
+	else{
+		movExprToReg(var1,var2,B,C);
+
+		pushCommand("SUB E E"); // e - result
+		pushCommand("SUB D D");
+		pushCommand("INC D");  // d - mul
+
+		pushCommand("COPY A C");
+		pushCommand("INC A");
+		pushCommand("SUB A B");
+		pushCommand("JZERO A " + to_string(output_code.size() + 2));
+		pushCommand("JUMP " + to_string(output_code.size() + 4));
+		pushCommand("ADD C C");
+		pushCommand("ADD D D");
+		pushCommand("JUMP " + to_string(output_code.size() - 7));
+
+		pushCommand("COPY A C");
+		pushCommand("SUB A B");
+		pushCommand("JZERO A " + to_string(output_code.size() + 2));
+		pushCommand("JUMP " + to_string(output_code.size() + 3));
+		pushCommand("SUB B C");
+		pushCommand("ADD E D");
+		pushCommand("HALF C");
+		pushCommand("HALF D");
+		pushCommand("JZERO D " + to_string(output_code.size() + 2));
+		pushCommand("JUMP " + to_string(output_code.size() - 9));
+	}
 	return new alloc("",B,CONST);
 }
 
+block* generateEQ(alloc* var1, alloc* var2){ 				// var1 == var2 ?  A == B ?
+	long long curr_index = output_code.size();
+	vector <jump*> curr_jumps;
 
+	if(var1->type == CONST && var2->type == CONST){
+		long long num1 = stoi(var1->name);
+		long long num2 = stoi(var2->name);
+
+		(num1 == num2) ? pushCommand("SUB C C") : pushCommand("INC C");
+	}
+	else{
+		movExprToReg(var1,var2, E, B);
+
+		pushCommand("COPY C E");
+		pushCommand("COPY D B");
+		pushCommand("SUB C B");
+		pushCommand("SUB D E");
+		pushCommand("ADD C D");
+	}
+	pushCommand("JZERO C ");  // + to_string(output_code.size()+2);
+	curr_jumps.push_back(new jump(output_code.size()-1, BLOCK));
+	pushCommand("JUMP ");
+	curr_jumps.push_back(new jump(output_code.size()-1, OUT));
+
+	jumpStack.push_back(curr_jumps);
+
+	return new block(curr_index, output_code.size());
+}
+
+block* generateNEQ(alloc* var1, alloc* var2){
+	long long curr_index = output_code.size();
+	vector <jump*> curr_jumps;
+
+	if(var1->type == CONST && var2->type == CONST){
+		long long num1 = stoi(var1->name);
+		long long num2 = stoi(var2->name);
+
+		(num1 != num2) ? pushCommand("INC C") : pushCommand("SUB C C");
+	}
+	else{
+		movExprToReg(var1,var2,E,B);
+
+		pushCommand("COPY C E");
+		pushCommand("COPY D B");
+		pushCommand("SUB C B");
+		pushCommand("SUB D E");
+		pushCommand("ADD C D");
+	}
+
+	pushCommand("JZERO C ");
+	curr_jumps.push_back(new jump(codeOffset-1,OUT));
+
+	jumpStack.push_back(curr_jumps);
+
+	return new block(curr_index, codeOffset);
+}
+
+block* generateLE(alloc* var1, alloc* var2){
+	long long curr_index = output_code.size();
+	vector <jump*> curr_jumps;
+
+	if(var1->type == CONST && var2->type == CONST){
+		long long num1 = stoi(var1->name);
+		long long num2 = stoi(var2->name);
+
+		(num1 < num2) ? pushCommand("INC E") : pushCommand("SUB E E");
+	}
+	else{
+		movExprToReg(var1, var2,E,B);
+
+		pushCommand("SUB B E");
+	}
+
+	pushCommand("JZERO B");
+	curr_jumps.push_back(new jump(codeOffset - 1,OUT));
+	jumpStack.push_back(curr_jumps);
+
+	return new block(curr_index, codeOffset);
+}
+
+block* generateEQL(alloc* var1, alloc* var2){
+	long long curr_index = output_code.size();
+	vector <jump*> curr_jumps;
+
+	if(var1->type == CONST && var2->type == CONST){
+		long long num1 = stoi(var1->name);
+		long long num2 = stoi(var2->name);
+
+		(num1 <= num2) ? pushCommand("INC E") : pushCommand("SUB E E");
+	}
+	else{
+		movExprToReg(var1, var2,E,B);
+		pushCommand("SUB E B");
+	}
+	pushCommand("JZERO E");			// jump curr + 2
+	pushCommand("JUMP");				// jump end
+
+	curr_jumps.push_back(new jump(codeOffset - 2,BLOCK));
+	curr_jumps.push_back(new jump(codeOffset - 1,OUT));
+	jumpStack.push_back(curr_jumps);
+
+	return new block(curr_index, codeOffset);
+}
+
+void pushCommand(string command){
+	output_code.push_back(command);
+	codeOffset++;
+}
+
+void resolveIfJump(block* cond){
+	vector<jump*> curr_jumps = jumpStack[jumpStack.size()-1];
+
+	int num = curr_jumps.size();
+
+	for(int i = 0; i < num; i++){
+		jump* temp = curr_jumps[i];
+
+		if(temp->type == BLOCK){
+			output_code[temp->index] += to_string(cond->end_block);
+		}
+
+		else if(temp->type == OUT){
+			output_code[temp->index] += to_string(codeOffset);
+		}
+	}
+	jumpStack.pop_back();
+}
+
+void resolveWhileJump(block* cond){
+	vector<jump*> curr_jumps = jumpStack[jumpStack.size()-1];
+	pushCommand("JUMP " + to_string(cond->beg_block));
+
+	int num = curr_jumps.size();
+
+	for(int i =0; i < num; i ++){
+		jump* temp = curr_jumps[i];
+
+		if(temp->type == BLOCK){
+			output_code[temp->index] += to_string(cond->end_block);
+		}
+		else if(temp->type == OUT){
+			output_code[temp->index] += to_string(codeOffset);
+		}
+	}
+
+	jumpStack.pop_back();
+}
+
+void resolveDoWhileJump(int beg,block* cond){
+	vector<jump*> curr_jumps = jumpStack[jumpStack.size()-1];
+	bool block_jump = false;
+	jump* temp;
+
+	for(int i =0; i < curr_jumps.size(); i ++){
+		temp = curr_jumps[i];
+
+		if(temp->type == BLOCK){
+			block_jump = true;
+		}
+	}
+
+	if(!block_jump){
+		pushCommand("JUMP");
+		curr_jumps.push_back(new jump(codeOffset-1,BLOCK));
+	}
+
+	for(int i =0; i < curr_jumps.size(); i ++){
+		temp = curr_jumps[i];
+
+		if(temp->type == BLOCK){
+			output_code[temp->index] += to_string(beg);
+		}
+		else if(temp->type == OUT){
+			output_code[temp->index] += to_string(codeOffset);
+		}
+	}
+}
 
 int main (int argc, char **argv){
 	if(argc > 0){

@@ -6,8 +6,33 @@
 using namespace std;
 
 enum reg_label { A = 0, B = 1, C = 2, D = 3, E = 4, F = 5,G = 6,H = 7};
-enum symbol_type{CONST,ID,ARR};
+enum symbol_type {CONST,ID,ARR};
+enum jump_type {BEG, OUT, BLOCK};                                               // JUMP to BEGINNING of cond , JUMP to END of block, JUMP to beggining of BLOCK
 static const char *label_str[]={ "A","B","C","D","E","F","G","H"};
+
+
+struct block{
+  long long beg_block;
+  long long end_block;
+
+  block(long long beg_block, long long end_block){
+    this->beg_block = beg_block;
+    this->end_block = end_block;
+  }
+  block(long long beg_block){
+    this->beg_block = beg_block;
+  }
+};
+
+struct jump{
+  jump_type type;
+  long long index;
+
+  jump(long long index, jump_type type){
+    this->index = index;
+    this->type = type;
+  }
+};
 
 struct symbol{
   int size;

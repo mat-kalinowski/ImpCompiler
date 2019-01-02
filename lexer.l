@@ -34,6 +34,11 @@
 "DO" {return DO;}
 "ENDDO" {return ENDDO;}
 "ENDWHILE" {return ENDWHILE;}
+"FOR" {return FOR;}
+"FROM" {return FROM;}
+"TO" {return TO;}
+"DOWNTO" {return DOWNTO;}
+"ENDFOR" {return ENDFOR;}
 
 "+" { return ADD;}
 "-" { return SUB;}
