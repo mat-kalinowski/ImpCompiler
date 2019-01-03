@@ -6,10 +6,12 @@
 	#include <iostream>
 	#include <string>
 	#include <vector>
+	#include <algorithm>
 
 	using namespace std;
 
   extern int yylex();
+	extern int yylineno;
 	extern int yyparse();
 	extern FILE *yyin;
 	void yyerror(const char *s);
@@ -130,7 +132,7 @@ command: READ identifier SEM {read($2);} |
 				 DO { $1 = codeOffset;} commands WHILE condition ENDDO { resolveDoWhileJump($1,$5); } |
 				 FOR PIDENTIFIER FROM value TO value DO { $1 = setIncLoop($2,$4,$6); } commands ENDFOR { setIncJump($1,$2); } |
 				 FOR PIDENTIFIER FROM value DOWNTO value DO { $1 = setDecLoop($2,$4,$6); } commands ENDFOR { setDecJump($1,$2); } |
- 				 WRITE value SEM {write($2);} |
+ 				 WRITE value SEM { write($2);} |
 ;
 
 expression: value {$$ = $1; singleExpression = true;}|                  /*  zawartość zawsze w rejestrze B   */
@@ -286,21 +288,28 @@ void allocateVar(alloc *var){																						/* alokacja rejestru zmiennyc
 void genConst(int value, reg_label reg){																												/* generating constant in given register */
 	int curr = 1;
 	string reg_str = label_str[reg];
+	vector<char> op;
 
 	pushCommand("SUB "+ reg_str + " " + reg_str);
 
-	if(value > 0){
-		pushCommand("INC "+ reg_str);
-
-		while(curr*2 < value){
-			pushCommand("ADD "+ reg_str + " " + reg_str);
-			curr *= 2;
+	while(value > 0){
+		if(value % 2){
+			op.push_back('i');
+			value --;
 		}
-		if(curr != value){
-			while(curr != value){
-				pushCommand("INC "+ reg_str);
-				curr++;
-			}
+		else{
+			op.push_back('s');
+			value /= 2;
+		}
+	}
+	reverse(begin(op), end(op));
+
+	for(int i =0; i < op.size(); i++){
+		if(op[i] == 'i'){
+			pushCommand("INC " + reg_str);
+		}
+		else{
+			pushCommand("ADD " + reg_str + " " + reg_str);
 		}
 	}
 }
@@ -815,11 +824,15 @@ block* setIncLoop(string var, alloc* val1, alloc* val2){ 										// returning 
 	table.add_iterator(var,1);
 	alloc* var_info = genVar(var);
 	allocateVar(var_info);
+	alloc* bound = new alloc("",mem_pointer,ID);
+	mem_pointer +=1;
+
+	movValToIterator(bound, val2, 0);
 	movValToIterator(var_info, val1,0);
 
 	loop_ind = codeOffset;
 
-	movExprToReg(var_info,val2,B,C);
+	movExprToReg(var_info,bound,B,C);
 	pushCommand("SUB B C");
 	pushCommand("JZERO B " + to_string(codeOffset+2));
 	out_jump = codeOffset;
@@ -852,12 +865,15 @@ block* setDecLoop(string var, alloc* val1, alloc* val2){ 										// returning 
 	table.add_iterator(var,1);
 	alloc* var_info = genVar(var);
 	allocateVar(var_info);
+	alloc* bound = new alloc("",mem_pointer,ID);
+	mem_pointer +=1;
 
+	movValToIterator(bound, val2, 0);
 	movValToIterator(var_info, val1,1);
 
 	loop_ind = codeOffset;
 
-	movExprToReg(var_info,val2,B,C);
+	movExprToReg(var_info,bound,B,C);
 	pushCommand("COPY D B");
 	pushCommand("SUB D C");
 	out_jump = codeOffset;
@@ -881,7 +897,6 @@ void setDecJump(block* for_beg,string it_name){
 	table.remove(it_name);
 }
 
-
 int main (int argc, char **argv){
 	if(argc > 0){
 			FILE *file = fopen(argv[1], "r");
@@ -901,6 +916,6 @@ int main (int argc, char **argv){
 }
 
 void yyerror(const char *s) {
-  cerr << "error: " << s << endl;
+  cerr << "\033[1;31mERROR: \033[0m" << s << " in line " << yylineno << endl;
   exit(-1);
 }

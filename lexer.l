@@ -6,10 +6,18 @@
    #include <string>
    #include <stdlib.h>
  	#include "parser.tab.h"
-    using namespace std;
+   using namespace std;
 %}
 
+%x COMMENT
+
 %%
+
+
+"[" BEGIN(COMMENT);
+<COMMENT>"]" BEGIN(INITIAL);
+<COMMENT>[^]] {}
+
 [_a-z]+ {
    yylval.sval =(char*) malloc(strlen(yytext)+1);
    strcpy(yylval.sval, yytext);
@@ -60,4 +68,5 @@
 ">=" {return EQG;}
 
 [\n\t" "] {}
+
 %%

@@ -8,7 +8,7 @@ void symbol_table::add_id(string name, int size){
 	symbol new_symbol(size, ID);
 
 	if(get_var(name) != NULL){
-	  cerr<<"redeclaration of variable" << endl;
+	  yyerror("redeclaration of variable");
 		exit(-1);
 	}
 
@@ -29,8 +29,10 @@ void symbol_table::add_arr(string name, int size, int arr_beg){
 	symbol new_symbol(size, ARR, arr_beg);
 
 	if(get_var(name) != NULL){
-		cerr<<"redeclaration of variable" << endl;
-		exit(-1);
+		yyerror("redeclaration of variable");
+	}
+	if(size <= 0){
+		yyerror("wrong size of an array");
 	}
 
 	new_symbol.allocation = 0;
@@ -74,11 +76,10 @@ string symbol_table::reg_str(symbol *var){
 void symbol_table::checkVar(string name){
 	symbol* temp = get_var(name);
 	if(!temp){
-		cerr << "undeclared variable use" << endl;
-		exit(-1);
+		yyerror("undeclared variable use");
 	}
 }
 
 void symbol_table::remove(string name){
-	table.erase(name);  
+	table.erase(name);
 }
