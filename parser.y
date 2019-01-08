@@ -18,7 +18,6 @@
 
 	void yyerror(const char *s);
 
-	void genConst(int value, reg_label acc);
 	void allocateVar(alloc *var);
 	void pushCommand(string command);
 	void assignSingleExpression(alloc* var, alloc* expr);
@@ -40,7 +39,7 @@
 
 	void write(alloc* value);
 	void read(alloc* value);
-	void genConst(int value, reg_label reg);
+	void genConst(long long value, reg_label reg);
 	void pushCommand(string command);
 
 	block* generateEQ(alloc* var1, alloc* var2);
@@ -108,7 +107,7 @@ program: DECLARE declarations IN commands END {
 ;
 
 declarations: declarations PIDENTIFIER SEM { table.add_id((string) $2,1);} |
- 							declarations PIDENTIFIER LB NUM COL NUM RB SEM {table.add_arr((string) $2,stoi($6)-stoi($4)+1,stoi($4));} |
+ 							declarations PIDENTIFIER LB NUM COL NUM RB SEM {table.add_arr((string) $2,stol($6)-stol($4)+1,stol($4));} |
 ;
 
 commands: commands command |
@@ -191,7 +190,7 @@ alloc* genVar(string ide){
 
 alloc* genArrConst(string ide, string index){
 	symbol* temp = table.get_var(ide);
-	int i_ind = stoi(index);
+	int i_ind = stol(index);
 	alloc* ret = new alloc(ide,temp->mem_adress + i_ind-temp->arr_beg,ARR);
 
 	return ret;
@@ -211,7 +210,7 @@ void assignSingleExpression(alloc* var, alloc* expr){														//przypisanie
 		}
 		else{
 			if(expr->type == CONST){
-				genConst(stoi(expr->name),var->curr_reg);
+				genConst(stol(expr->name),var->curr_reg);
 			}
 			else{
 				movMemToReg(expr, var->curr_reg);
@@ -224,7 +223,7 @@ void assignSingleExpression(alloc* var, alloc* expr){														//przypisanie
 		}
 		else{
 			if(expr->type == CONST){
-				genConst(stoi(expr->name),B);
+				genConst(stol(expr->name),B);
 				movRegToMem(B, var);
 			}
 			else{
@@ -245,7 +244,7 @@ void assignExpression(alloc* var, alloc* expr){																	// expression je
 
 void write(alloc *value){
 	if(value->type == CONST){
-		genConst(stoi(value->name), B);
+		genConst(stol(value->name), B);
 		pushCommand("PUT " + (string)label_str[B]);
 	}
 	else if(value->allocation){
@@ -295,8 +294,8 @@ void allocateVar(alloc *var){																						/* alokacja rejestru zmiennyc
 	}
 }
 
-void genConst(int value, reg_label reg){																												/* generating constant in given register */
-	int curr = 1;
+void genConst(long long value, reg_label reg){																												/* generating constant in given register */
+	long long curr = 1;
 	string reg_str = label_str[reg];
 	vector<char> op;
 
@@ -376,7 +375,7 @@ void addValToMem(alloc* mem_var){										// wygenerowanie wartości indeksu w 
 void movExprToReg(alloc* var1, alloc* var2, reg_label reg1, reg_label reg2){
 
 	if(var1->type == CONST){
-		genConst(stoi(var1->name),reg1);
+		genConst(stol(var1->name),reg1);
   }
  	else if(!var1->allocation){
 		movMemToReg(var1, reg1);
@@ -386,7 +385,7 @@ void movExprToReg(alloc* var1, alloc* var2, reg_label reg1, reg_label reg2){
 	}
 
 	if(var2->type == CONST){
-		genConst(stoi(var2->name),reg2);
+		genConst(stol(var2->name),reg2);
 	}
 	else if(!var2->allocation){
 		movMemToReg(var2,reg2);
@@ -399,7 +398,7 @@ void movExprToReg(alloc* var1, alloc* var2, reg_label reg1, reg_label reg2){
 void movValToIterator(alloc* var1, alloc* var2, int exVal){
 	if(var1->allocation == 1){																						// i placed in mem or reg  1.) i = val1
 		if(var2->type == CONST){
-			genConst(stoi(var2->name)+exVal,var1->curr_reg);
+			genConst(stol(var2->name)+exVal,var1->curr_reg);
 		}
 		else if(var2->allocation ==1){
 			pushCommand("COPY " + (string)label_str[var1->curr_reg] + (string)label_str[var2->curr_reg]);
@@ -416,7 +415,7 @@ void movValToIterator(alloc* var1, alloc* var2, int exVal){
 	}
 	else if(!var1->allocation){
 		if(var2->type == CONST){
-			genConst(stoi(var2->name)+exVal,B);
+			genConst(stol(var2->name)+exVal,B);
 			movRegToMem(B,var1);
 		}
 		else if(var2->allocation ==1){
@@ -444,28 +443,28 @@ void movValToIterator(alloc* var1, alloc* var2, int exVal){
 
 alloc* addExpression(alloc* var1, alloc* var2){
 	if(var1->type == CONST && var2->type == CONST){
-		long long temp = stoi(var1->name);
-		long long temp2 = stoi(var2->name);
+		long long temp = stol(var1->name);
+		long long temp2 = stol(var2->name);
 		genConst(temp+temp2,B);
 	}
 	else if(var2->type == CONST){
 		if(var1->allocation){
-			genConst(stoi(var2->name),B);
+			genConst(stol(var2->name),B);
 			pushCommand("ADD B " + (string)label_str[var1->curr_reg]);
 		}
 		else{
-			genConst(stoi(var2->name),B);
+			genConst(stol(var2->name),B);
 			movMemToReg(var1,C);
 			pushCommand("ADD B C");
 		}
 	}
 	else if(var1->type == CONST){
 		if(var2->allocation){
-			genConst(stoi(var1->name),B);
+			genConst(stol(var1->name),B);
 			pushCommand("ADD B " + (string)label_str[var2->curr_reg]);
 		}
 		else{
-			genConst(stoi(var1->name),B);
+			genConst(stol(var1->name),B);
 			movMemToReg(var2,C);
 			pushCommand("ADD B C");
 		}
@@ -495,30 +494,30 @@ alloc* addExpression(alloc* var1, alloc* var2){
 
 alloc* subExpression(alloc* var1, alloc* var2){
 	if(var1->type == CONST && var2->type == CONST){
-		long long temp = stoi(var1->name);
-		long long temp2 = stoi(var2->name);
+		long long temp = stol(var1->name);
+		long long temp2 = stol(var2->name);
 		genConst(temp-temp2,B);
 	}
 	else if(var2->type == CONST){
 		if(var1->allocation){
-			genConst(stoi(var2->name),C);
+			genConst(stol(var2->name),C);
 			pushCommand("COPY B " + (string)label_str[var1->curr_reg]);
 			pushCommand("SUB B C");
 		}
 		else{
 			movMemToReg(var1,B);
-			genConst(stoi(var2->name),C);
+			genConst(stol(var2->name),C);
 			pushCommand("SUB B C");
 		}
 	}
 	else if(var1->type == CONST){
 		if(var2->allocation){
-			genConst(stoi(var1->name),B);
+			genConst(stol(var1->name),B);
 			pushCommand("SUB B " + (string)label_str[var2->curr_reg]);
 		}
 		else{
 			movMemToReg(var2,C);
-			genConst(stoi(var1->name),B);
+			genConst(stol(var1->name),B);
 			pushCommand("SUB B C");
 		}
 	}
@@ -550,8 +549,8 @@ alloc* mulExpression(alloc* var1, alloc* var2){
 	reg_label mul_reg;
 
 	if(var1->type == CONST && var2->type == CONST){
-		long long temp = stoi(var1->name);
-		long long temp2 = stoi(var2->name);
+		long long temp = stol(var1->name);
+		long long temp2 = stol(var2->name);
 		genConst(temp*temp2,B);
 	}
 	else{
@@ -576,12 +575,12 @@ alloc* mulExpression(alloc* var1, alloc* var2){
 }
 
 alloc* divExpression(alloc* var1, alloc* var2){						// divide reg B by reg C --->   B - DIVIDENT , C - DIVISOR
-	if(var2->type == CONST && stoi(var2->name) == 0){
+	if(var2->type == CONST && stol(var2->name) == 0){
 		pushCommand("SUB E E");
 	}
 	if(var1->type == CONST && var2->type == CONST){
-		long long temp = stoi(var1->name);
-		long long temp2 = stoi(var2->name);
+		long long temp = stol(var1->name);
+		long long temp2 = stol(var2->name);
 		genConst(temp/temp2,E);
 	}
 	else{
@@ -618,12 +617,12 @@ alloc* divExpression(alloc* var1, alloc* var2){						// divide reg B by reg C --
 }
 
 alloc* modExpression(alloc* var1, alloc* var2){
-	if(var2->type == CONST && stoi(var2->name) == 0){
+	if(var2->type == CONST && stol(var2->name) == 0){
 		pushCommand("SUB E E");
 	}
 	else if(var1->type == CONST && var2->type == CONST){
-		long long temp = stoi(var1->name);
-		long long temp2 = stoi(var2->name);
+		long long temp = stol(var1->name);
+		long long temp2 = stol(var2->name);
 		genConst(temp/temp2,B);
 	}
 	else{
@@ -663,8 +662,8 @@ block* generateEQ(alloc* var1, alloc* var2){ 				// var1 == var2 ?  A == B ?
 	vector <jump*> curr_jumps;
 
 	if(var1->type == CONST && var2->type == CONST){
-		long long num1 = stoi(var1->name);
-		long long num2 = stoi(var2->name);
+		long long num1 = stol(var1->name);
+		long long num2 = stol(var2->name);
 
 		(num1 == num2) ? pushCommand("SUB C C") : pushCommand("INC C");
 	}
@@ -692,8 +691,8 @@ block* generateNEQ(alloc* var1, alloc* var2){
 	vector <jump*> curr_jumps;
 
 	if(var1->type == CONST && var2->type == CONST){
-		long long num1 = stoi(var1->name);
-		long long num2 = stoi(var2->name);
+		long long num1 = stol(var1->name);
+		long long num2 = stol(var2->name);
 
 		(num1 != num2) ? pushCommand("INC C") : pushCommand("SUB C C");
 	}
@@ -720,8 +719,8 @@ block* generateLE(alloc* var1, alloc* var2){
 	vector <jump*> curr_jumps;
 
 	if(var1->type == CONST && var2->type == CONST){
-		long long num1 = stoi(var1->name);
-		long long num2 = stoi(var2->name);
+		long long num1 = stol(var1->name);
+		long long num2 = stol(var2->name);
 
 		(num1 < num2) ?  pushCommand("INC B") : pushCommand("SUB B B");
 	}
@@ -743,8 +742,8 @@ block* generateEQL(alloc* var1, alloc* var2){
 	vector <jump*> curr_jumps;
 
 	if(var1->type == CONST && var2->type == CONST){
-		long long num1 = stoi(var1->name);
-		long long num2 = stoi(var2->name);
+		long long num1 = stol(var1->name);
+		long long num2 = stol(var2->name);
 
 		(num1 <= num2) ?  pushCommand("SUB E E") : pushCommand("INC E");
 	}
