@@ -72,11 +72,40 @@ string symbol_table::reg_str(symbol *var){
 /*
 *declarated variable validation
 */
-
-void symbol_table::checkVar(string name){
+void symbol_table::checkVar(string name, symbol_type var_type ){
 	symbol* temp = get_var(name);
 	if(!temp){
 		yyerror("undeclared variable use");
+	}
+	if(temp->type == ARR && (var_type == ID || var_type == ITER)){
+		yyerror("wrong array name context");
+	}
+	if((temp->type == ID || temp->type == ITER) && var_type == ARR){
+		yyerror("wrong variable name context");
+	}
+}
+
+/*
+* expression variables validation
+*/
+void symbol_table::checkExpression(alloc* var1){
+	if(var1->type != CONST){
+		if(var1->allocation == -1){
+			yyerror("uinitialized variable use in expression");
+		}
+	}
+}
+
+/*
+* assignment to a variable validation
+*/
+void symbol_table::checkAssignment(string name){
+	symbol* temp = get_var(name);
+	if(!temp){
+		yyerror("wrong assignment expression");
+	}
+	if(temp->type == ITER){
+		yyerror("cannot change loop iterator");
 	}
 }
 

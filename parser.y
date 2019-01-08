@@ -4,6 +4,7 @@
 	#include "parser_dec.h"
 
 	#include <iostream>
+	#include <fstream>
 	#include <string>
 	#include <vector>
 	#include <algorithm>
@@ -14,6 +15,7 @@
 	extern int yylineno;
 	extern int yyparse();
 	extern FILE *yyin;
+
 	void yyerror(const char *s);
 
 	void genConst(int value, reg_label acc);
@@ -56,6 +58,7 @@
 	void setDecJump(block* for_beg, string it_name);
 
 	symbol_table table;
+	ofstream out_file;
 
 	vector<vector<jump*>> jumpStack;
 	vector<string> output_code;
@@ -99,7 +102,7 @@ program: DECLARE declarations IN commands END {
 	pushCommand("HALT");
 
   for(int i =0; i < output_code.size(); i++){
-		cout << output_code[i] << endl;
+		out_file << output_code[i] << endl;
 	}
 }
 ;
@@ -114,6 +117,7 @@ commands: commands command |
 
 command: identifier ASN expression SEM {
 	allocateVar($1);
+	table.checkAssignment($1->name);
 	if(singleExpression){
 		assignSingleExpression($1,$3);
 		singleExpression = false;
@@ -124,7 +128,7 @@ command: identifier ASN expression SEM {
 }
 ;
 
-command: READ identifier SEM {read($2);} |
+command: READ identifier SEM { table.checkAssignment($2->name); read($2);} |
 				 IF condition THEN commands { pushCommand("JUMP "); $<ival>1 = codeOffset-1; resolveIfJump($2); }
 				 ELSE commands ENDIF { output_code[$<ival>1] += to_string(codeOffset); }|
 				 IF condition THEN commands ENDIF { resolveIfJump($2); }|
@@ -132,15 +136,15 @@ command: READ identifier SEM {read($2);} |
 				 DO { $1 = codeOffset;} commands WHILE condition ENDDO { resolveDoWhileJump($1,$5); } |
 				 FOR PIDENTIFIER FROM value TO value DO { $1 = setIncLoop($2,$4,$6); } commands ENDFOR { setIncJump($1,$2); } |
 				 FOR PIDENTIFIER FROM value DOWNTO value DO { $1 = setDecLoop($2,$4,$6); } commands ENDFOR { setDecJump($1,$2); } |
- 				 WRITE value SEM { write($2);} |
+ 				 WRITE value SEM { table.checkExpression($2); write($2);} |
 ;
 
-expression: value {$$ = $1; singleExpression = true;}|                  /*  zawartość zawsze w rejestrze B   */
- 						value ADD value {$$ = addExpression($1,$3); }|
-						value SUB value {$$ = subExpression($1,$3); }|
-						value MUL value {$$ = mulExpression($1,$3); }|
-						value DIV value {$$ = divExpression($1,$3); }|
-						value MOD value {$$ = modExpression($1,$3); }
+expression: value {table.checkExpression($1);$$ = $1; singleExpression = true;}|                  /*  zawartość zawsze w rejestrze B   */
+ 						value ADD value { table.checkExpression($1); $$ = addExpression($1,$3); table.checkExpression($3); }|
+						value SUB value { table.checkExpression($1); $$ = subExpression($1,$3); table.checkExpression($3); }|
+						value MUL value { table.checkExpression($1); $$ = mulExpression($1,$3); table.checkExpression($3); }|
+						value DIV value { table.checkExpression($1); $$ = divExpression($1,$3); table.checkExpression($3); }|
+						value MOD value { table.checkExpression($1); $$ = modExpression($1,$3); table.checkExpression($3); }
 ;
 
 condition: value EQ value  { $$ = generateEQ($1,$3); }|
@@ -155,9 +159,15 @@ value: NUM { $$ = new alloc($1,CONST);} |
 			 identifier
 ;
 
-identifier: PIDENTIFIER {  table.checkVar((string)$1); $$ = genVar($1);}|
-						PIDENTIFIER LB PIDENTIFIER RB {	table.checkVar((string)$1); $$ = genArrVar($1,$3);}|
-						PIDENTIFIER LB NUM RB { table.checkVar((string)$1); $$ = genArrConst($1,$3);}
+identifier: PIDENTIFIER {
+							table.checkVar((string)$1, ID);
+							$$ = genVar($1);}|
+						PIDENTIFIER LB PIDENTIFIER RB {
+							table.checkVar((string)$1, ARR);
+							$$ = genArrVar($1,$3);}|
+						PIDENTIFIER LB NUM RB {
+							table.checkVar((string)$1, ARR);
+							$$ = genArrConst($1,$3);}
 ;
 
 %%
@@ -566,6 +576,9 @@ alloc* mulExpression(alloc* var1, alloc* var2){
 }
 
 alloc* divExpression(alloc* var1, alloc* var2){						// divide reg B by reg C --->   B - DIVIDENT , C - DIVISOR
+	if(var2->type == CONST && stoi(var2->name) == 0){
+		pushCommand("SUB E E");
+	}
 	if(var1->type == CONST && var2->type == CONST){
 		long long temp = stoi(var1->name);
 		long long temp2 = stoi(var2->name);
@@ -576,6 +589,7 @@ alloc* divExpression(alloc* var1, alloc* var2){						// divide reg B by reg C --
 		movExprToReg(var1,var2,B,C);
 
 		pushCommand("SUB E E"); // e - result
+		pushCommand("JZERO C " + to_string(output_code.size()+21));
 		pushCommand("SUB D D");
 		pushCommand("INC D");  // d - mul
 
@@ -604,7 +618,10 @@ alloc* divExpression(alloc* var1, alloc* var2){						// divide reg B by reg C --
 }
 
 alloc* modExpression(alloc* var1, alloc* var2){
-	if(var1->type == CONST && var2->type == CONST){
+	if(var2->type == CONST && stoi(var2->name) == 0){
+		pushCommand("SUB E E");
+	}
+	else if(var1->type == CONST && var2->type == CONST){
 		long long temp = stoi(var1->name);
 		long long temp2 = stoi(var2->name);
 		genConst(temp/temp2,B);
@@ -613,6 +630,7 @@ alloc* modExpression(alloc* var1, alloc* var2){
 		movExprToReg(var1,var2,B,C);
 
 		pushCommand("SUB E E"); // e - result
+		pushCommand("JZERO C " + to_string(output_code.size() + 22));
 		pushCommand("SUB D D");
 		pushCommand("INC D");  // d - mul
 
@@ -635,8 +653,9 @@ alloc* modExpression(alloc* var1, alloc* var2){
 		pushCommand("HALF D");
 		pushCommand("JZERO D " + to_string(output_code.size() + 2));
 		pushCommand("JUMP " + to_string(output_code.size() - 9));
+		pushCommand("COPY E B");
 	}
-	return new alloc("",B,CONST);
+	return new alloc("",E,CONST);
 }
 
 block* generateEQ(alloc* var1, alloc* var2){ 				// var1 == var2 ?  A == B ?
@@ -899,13 +918,14 @@ void setDecJump(block* for_beg,string it_name){
 
 int main (int argc, char **argv){
 	if(argc > 0){
-			FILE *file = fopen(argv[1], "r");
+			FILE *file_in = fopen(argv[1], "r");
+			out_file.open(argv[2]);
 
-			if (!file) {
-			 cout << "cannot open file " << argv[1] << endl;
+			if (!file_in ) {
+			 cerr << "cannot open file " << argv[1] << endl;
 			 return -1;
 		 	}
-			yyin = file;
+			yyin = file_in;
 	}
 
 	else{

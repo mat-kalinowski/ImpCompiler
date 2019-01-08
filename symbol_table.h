@@ -17,7 +17,9 @@ class symbol_table{
     symbol* get_var(string name);
     string reg_str(string name);
     string reg_str(symbol *var);
-    void checkVar(string name);
+    void checkVar(string name, symbol_type type);
+    void checkExpression(alloc* var1);
+    void checkAssignment(string name);
     void remove(string name);
 
   private:
