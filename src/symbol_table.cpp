@@ -1,4 +1,4 @@
-#include "symbol_table.h"
+#include "../headers/symbol_table.h"
 
 /*
 * adding variable to a symbol tabel

@@ -2,22 +2,27 @@
 
 WORK_DIR=./build
 OUT_DIR=./bin
+SRC_DIR=./src
+HDRS_DIR=./headers
 
 default: out_dir work_dir compiler
+
+dependencies:
+
 
 clean:
 	rm -rf ./build
 	rm -rf ./bin
 
 compiler: parser lexer
-	cp *.h $(WORK_DIR)
-	g++-7 -o $(OUT_DIR)/compiler $(WORK_DIR)/lex.cpp $(WORK_DIR)/parser.tab.c *.cpp
+	cp $(HDRS_DIR)/*.h $(WORK_DIR)
+	g++-7 -o $(OUT_DIR)/compiler $(WORK_DIR)/lex.cpp $(WORK_DIR)/parser.tab.c $(SRC_DIR)/*.cpp
 
-lexer: lexer.l
-	flex -o $(WORK_DIR)/lex.cpp lexer.l
+lexer:
+	flex -o $(WORK_DIR)/lex.cpp $(SRC_DIR)/lexer.l
 
-parser: parser.y
-	bison --defines=$(WORK_DIR)/parser.tab.h -o $(WORK_DIR)/parser.tab.c parser.y
+parser:
+	bison --defines=$(WORK_DIR)/parser.tab.h -o $(WORK_DIR)/parser.tab.c $(SRC_DIR)/parser.y
 
 out_dir:
 	mkdir -p $(OUT_DIR)

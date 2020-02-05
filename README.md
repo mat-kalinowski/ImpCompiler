@@ -1,9 +1,10 @@
 # Simple Imperative Language Compiler (Academic Project)
 
-Compiler project made as a final project for academic course - Formal Languages and Techniques of Translation. 
+Compiler made as a final project for academic course - Formal Languages and Techniques of Translation. 
 
 ## Simple usage scenario
 
+<img src="https://i.imgur.com/qbICztb.gif" width="700" height="auto">
 
 ## Used technologies
 
