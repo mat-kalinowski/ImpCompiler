@@ -5,7 +5,6 @@ Compiler project made as a final project for academic course - Formal Languages 
 ## Simple usage scenario
 
 
-
 ## Used technologies
 
 - <b>Flex</b> version 2.6.4,
@@ -13,7 +12,7 @@ Compiler project made as a final project for academic course - Formal Languages 
 - <b>g++</b> version 8.2.0,
 - <b>GNU Make</b> version 4.2.1.
 
-Compiler has been written in C++ language with parser and lexer made from Bison and Flex ools.
+Compiler has been written in C++ language with parser and lexer made from Bison and Flex tools.
 
 ## Compilation
 
@@ -23,18 +22,18 @@ Build process is simplified by GNU make
 - `make clean` to remove `bin` directory with whole content.
 
 ## Uruchamianie kompilatora
-Aby uruchomić kompilator należy użyć polecania `./kompilator filename.imp filename.mr`, gdzie:
+To run the compiler you have to type `./compiler filename.imp filename.mr`, gdzie:
 
-- `filename.imp` - nazwa pliku z kodem wejściowym,
-- `filename.mr` - nazwa pliku z kodem wynikowym.
+- `filename.imp` - filename with input code,
+- `filename.mr` - filename with output code.
 
-Jeżeli kompilacja przebiegnie pomyślnie zostanie zwrócony plik z kodem na maszynę rejestrową. W razie wystąpienia błędów w kodzie wejściowym, zostaną wypisane komunikaty o rodzaju znalezionych błędów oraz miejscu ich występowania. W takim przypadku kompilator nie zwraca pliku z kodem wynikowym.
+If compilation is carried out successfully the output code is produced. In other case warnings and errors are printed. 
 
 ## Interpreter
-Do dyspozycji studentów został oddany interpreter prostego kodu maszynowego autorstwa <b>dra Macieja Gębali</b>. Jest on dostępny do pobrania pod tym [linkiem](https://cs.pwr.edu.pl/gebala/dyd/jftt2018/labor4.zip). Interpreter znajduje się również w niniejszym repozytorium w folderze `maszyna_rejestrowa` wraz z plikiem README opisującym sposób kompilacji i uruchomienia.
+Interpreter of the output assembly is responsible for executing the code, it was written by our academic teacher - phd. Maciej Gębala. You can find the source code in the interpreter path.
 
-## Specyfikacja języka
-Język przeznaczony dla kompilatora jest opisany następują gramatyką: 
+## Language grammar
+High level language for which compiler was desgined can be described with following grammar: 
 
     program      -> DECLARE declarations IN commands END
 
@@ -76,9 +75,10 @@ Język przeznaczony dla kompilatora jest opisany następują gramatyką:
                 | pidentifier(pidentifier)
                 | pidentifier(num)
 
-Poniżej znajduje się przykładowy program napisany w tym języku:
+Sample test programme for specified language:
 
-    [ Rozklad liczby na czynniki pierwsze ]
+    [ Factorization of a number into prime factors ]
+    
     DECLARE
         n; m; reszta; potega; dzielnik;
     IN
@@ -106,6 +106,4 @@ Poniżej znajduje się przykładowy program napisany w tym języku:
             WRITE 1;
         ENDIF
     END
-
-Powyższe gramatyka oraz przykładowy program są autorstwa <b>dra Macieja Gębali</b>. Szczegółowe informacje odnośnie zadania można znaleźć w pliku `labor4.pdf` znajdujacym się w repozytorium.
 
